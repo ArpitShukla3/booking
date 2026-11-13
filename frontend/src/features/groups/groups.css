@@ -162,6 +162,7 @@
 .gp-request-meta > span { display: inline-flex; align-items: center; gap: 5px; }
 .gp-shared { color: var(--booking); font-weight: 700; }
 .gp-request-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gp-view-profile { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; }
 .gp-past summary { cursor: pointer; color: var(--action-blue); font-weight: 700; }
 .gp-past summary:focus-visible { outline: 2px solid var(--action-blue); outline-offset: 2px; border-radius: 3px; }
 a.gp-badge:hover { text-decoration: underline; }

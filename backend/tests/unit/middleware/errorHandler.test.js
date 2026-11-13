@@ -28,6 +28,14 @@ describe('errorHandler', () => {
     assert.equal(res.statusCode, 400);
   });
 
+  it('turns an oversized body into 413, not a 500', () => {
+    const res = mockRes();
+    const err = Object.assign(new Error('request entity too large'), { type: 'entity.too.large', status: 413 });
+    errorHandler(err, {}, res, () => {});
+    assert.equal(res.statusCode, 413);
+    assert.deepEqual(res.body, { error: { message: 'Request body is too large' } });
+  });
+
   it('hides unknown errors behind a 500', () => {
     const res = mockRes();
     const log = mock.method(console, 'error', () => {});

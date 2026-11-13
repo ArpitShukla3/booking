@@ -7,7 +7,7 @@ The problem statement has 6 Must-have deliverables (M1–M6). They are split int
 | Track | Developer | Tickets | Owns |
 |---|---|---|---|
 | **A: Traveller / Seeker** | Dev A | [M1 Sign up](TASK-M1-sign-up.md) · [M3 Traveller search](TASK-M3-traveller-search.md) · [M4 See matches](TASK-M4-see-matches.md) | identity, lookups, searches, matching engine |
-| **B: Group / Owner** | Dev B | [M2 Create group post](TASK-M2-create-group-post.md) · [M5 Join requests](TASK-M5-join-requests.md) · [M6 Common Group Page](TASK-M6-common-group-page.md) | groups, join requests, hotels, cost split, booking |
+| **B: Group / Owner** | Dev B | [M2 Create group post](TASK-M2-create-group-post.md) · [M5 Join requests](TASK-M5-join-requests.md) · [M6 Common Group Page](TASK-M6-common-group-page.md) · extra [X1 Traveller profile + reviews (demo)](TASK-X1-traveller-profile-reviews.md) | groups, join requests, hotels, cost split, booking, seeker profiles |
 
 **Why this split works:**
 - The tracks meet in only **3 places**: the current traveller (header), the Group object shape, and one link (match card → group page). All 3 are fixed in §2–§3 **before** anyone starts, so neither developer waits for the other.
@@ -112,6 +112,7 @@ Errors from every endpoint: `{ "error": { "message": string, "fields"?: { [field
 | POST | `/api/join-requests/:id/reject` 🔒 | M5 | owner only |
 | GET | `/api/join-requests/mine` 🔒 | M5 | the seeker's requests + status |
 | GET | `/api/join-requests/incoming` 🔒 | M5 | owner notifications: pending requests on owned groups (added in M5) |
+| — | (none) | X1 | traveller profile reuses `GET /api/travellers/:id`; reviews/ratings/votes are frontend mock data, no endpoint yet |
 | GET | `/api/groups/:id/hotels` 🔒 | M6 | members only; options with total + per-member cost |
 | GET / POST / DELETE | `/api/groups/:id/saved-options` 🔒 | M6 | shortlist + alignment |
 | GET / POST | `/api/groups/:id/booking` 🔒 | M6 | one booking per group; 409 if one already exists |
@@ -125,8 +126,8 @@ Errors from every endpoint: `{ "error": { "message": string, "fields"?: { [field
 | Backend features (each has `routes/<f>.routes.js`, `controllers/<f>.controller.js`, `services/<f>.service.js`, `helpers/postgres/<f>.helper.js`) | `lookups`, `travellers`, `searches`, `matches` | `groups`, `joinRequests`, `groupHotels` |
 | Pure logic + unit tests | `services/matching.service.js` (the 6 rules, scoring; no DB) | `services/hotelPricing.service.js` (rooms needed, total, per member; no DB) |
 | Migrations / tables | `searches` | `join_requests`, `saved_hotel_options`, `group_bookings` |
-| Frontend pages | `/signup`, `/login`, `/search`, `/searches/:id/matches`, `/me` | `/groups/new`, `/my-groups`, `/groups/:groupId`, `/groups/:groupId/hotels`, `/my-requests`, `/credits` |
-| Frontend folders | `src/features/traveller/`, `src/features/search/` | `src/features/groups/`, `src/features/hotels/` |
+| Frontend pages | `/signup`, `/login`, `/search`, `/searches/:id/matches`, `/me` | `/groups/new`, `/my-groups`, `/groups/:groupId`, `/groups/:groupId/hotels`, `/my-requests`, `/travellers/:travellerId` (X1), `/credits` |
+| Frontend folders | `src/features/traveller/`, `src/features/search/` | `src/features/groups/`, `src/features/hotels/`, `src/features/profile/` (X1) |
 
 **Cross-track reads:** if your service needs the other track's data (e.g. Track B shows member profiles, Track A reads groups for matching), **call the other track's helper read functions** (`travellers.helper.findByIds`, `groups.helper.listOpenByCity`). Don't write your own SQL against their tables. Ask the owner to add a missing read function; it's a small additive change.
 

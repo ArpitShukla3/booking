@@ -66,7 +66,7 @@ test('Scenario B: Priya is interested → Sarah is notified → approves → gro
   const mine = priya.getByRole('article').filter({ hasText: name });
   await expect(mine.getByText('Approved', { exact: true })).toBeVisible();
   await priya.goto(`/groups/${groupId}`);
-  await expect(priya.getByText('You’re a member')).toBeVisible();
+  await expect(priya.getByText('You’re a member', { exact: true })).toBeVisible();
 });
 
 test('declined request is saved; the seeker sees "Request declined" and cannot ask again', async ({ browser, request }) => {

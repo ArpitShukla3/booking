@@ -26,6 +26,13 @@ describe('API basics', () => {
     assert.equal(res.body.error.message, 'Invalid JSON body');
   });
 
+  it('oversized JSON body → 413 in the standard error shape', async () => {
+    const res = await api().post('/api/travellers').set('Content-Type', 'application/json')
+      .send(JSON.stringify({ name: 'a'.repeat(200_000) }));
+    assert.equal(res.status, 413);
+    assert.equal(res.body.error.message, 'Request body is too large');
+  });
+
   it('serves hotel photos at the path stored in hotels.image', async () => {
     const res = await api().get('/images/hotels/HOTEL-TWIN-1.jpg');
     assert.equal(res.status, 200);

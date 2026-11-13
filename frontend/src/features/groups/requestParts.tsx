@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BellRing, Check, CheckCircle2, Clock3, Heart, Loader2, MapPin, ShieldCheck, Sparkles, UsersRound, X, XCircle } from 'lucide-react';
+import { BellRing, Check, CheckCircle2, Clock3, Heart, Loader2, MapPin, ShieldCheck, Sparkles, UserRound, UsersRound, X, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { InterestTags } from '@/components/shared/common';
@@ -10,6 +10,7 @@ import { useTravellerStore } from '@/store/useTravellerStore';
 import type { GroupDetails } from '@/types/group';
 import type { IncomingJoinRequest, JoinRequestStatus, OwnerJoinRequest } from '@/types/joinRequest';
 import type { Traveller } from '@/types/traveller';
+import type { ProfileLinkState } from '@/features/profile/TravellerProfilePage';
 import { requestStatusLabel, seekerAction, timeAgo } from './joinRequests';
 import { stagger } from './media';
 
@@ -80,8 +81,8 @@ export function InterestPanel({ group }: { group: GroupDetails }) {
 
 /* ---------- owner: join requests on their group page ---------- */
 
-function SeekerCard({ request, index, spotsLeft, busy, onApprove, onReject }: {
-  request: OwnerJoinRequest; index: number; spotsLeft: number; busy: boolean;
+function SeekerCard({ request, index, spotsLeft, busy, groupName, onApprove, onReject }: {
+  request: OwnerJoinRequest; index: number; spotsLeft: number; busy: boolean; groupName: string;
   onApprove: () => void; onReject: () => void;
 }) {
   const { seeker } = request;
@@ -96,6 +97,11 @@ function SeekerCard({ request, index, spotsLeft, busy, onApprove, onReject }: {
         </div>
         <span className="ml-auto"><RequestStatusPill status={request.status} /></span>
       </div>
+      <Link className="text-link gp-view-profile" to={`/travellers/${seeker.traveller_id}`}
+        state={{ from: `/groups/${request.group_id}#join-requests`, fromLabel: groupName } satisfies ProfileLinkState}
+        aria-label={`View ${seeker.name}’s profile, reviews and rating`}>
+        <UserRound size={14} aria-hidden="true" />View profile
+      </Link>
       <div className="gp-request-meta">
         <span><MapPin size={14} aria-hidden="true" />{seeker.home_city}</span>
         <span><ShieldCheck size={14} aria-hidden="true" />{prefLabel(seeker)}</span>
@@ -173,7 +179,7 @@ export function OwnerRequestsSection({ group, onMembersChanged }: { group: Group
             {pending.length ? (
               <div className="gp-requests">
                 {pending.map((r, i) => (
-                  <SeekerCard key={r.request_id} request={r} index={i} spotsLeft={group.spots_left} busy={busy === r.request_id}
+                  <SeekerCard key={r.request_id} request={r} index={i} spotsLeft={group.spots_left} busy={busy === r.request_id} groupName={group.name}
                     onApprove={() => decide(r, 'approve')} onReject={() => setConfirmReject(r)} />
                 ))}
               </div>
@@ -182,7 +188,7 @@ export function OwnerRequestsSection({ group, onMembersChanged }: { group: Group
               <details className="gp-past mt-4">
                 <summary>Past decisions ({past.length})</summary>
                 <div className="gp-requests mt-3">
-                  {past.map((r, i) => <SeekerCard key={r.request_id} request={r} index={i} spotsLeft={group.spots_left} busy={false} onApprove={() => undefined} onReject={() => undefined} />)}
+                  {past.map((r, i) => <SeekerCard key={r.request_id} request={r} index={i} spotsLeft={group.spots_left} busy={false} groupName={group.name} onApprove={() => undefined} onReject={() => undefined} />)}
                 </div>
               </details>
             ) : null}
@@ -212,7 +218,7 @@ export function IncomingRequestsPanel({ requests }: { requests: IncomingJoinRequ
           <li key={r.request_id} className="gp-notify-item gp-rise" style={stagger(i)}>
             <span className="avatar">{r.seeker.name.charAt(0)}</span>
             <div className="min-w-0">
-              <p><b>{r.seeker.name}</b> is interested in <Link className="text-link" to={`/groups/${r.group.group_id}#join-requests`}>{r.group.name}</Link></p>
+              <p><Link className="text-link" to={`/travellers/${r.seeker.traveller_id}`} state={{ from: '/my-groups', fromLabel: 'My groups' } satisfies ProfileLinkState}><b>{r.seeker.name}</b></Link> is interested in <Link className="text-link" to={`/groups/${r.group.group_id}#join-requests`}>{r.group.name}</Link></p>
               <small>
                 {r.seeker.age ?? '–'} · {genderLabel(r.seeker)} · {r.seeker.home_city}
                 {r.shared_interests.length ? ` · ${r.shared_interests.length} shared interest${r.shared_interests.length === 1 ? '' : 's'}` : ''} · {timeAgo(r.created_at)}

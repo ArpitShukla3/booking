@@ -146,7 +146,7 @@ export function BookingHeader() {
           ) : null}
         </nav>
       </div>
-      <div className="demo-strip" hidden={pathname === "/login" || pathname === "/signup" || pathname === "/dashboard" || pathname.startsWith("/group-match") || pathname.startsWith("/groups") || pathname === "/my-groups" || pathname === "/my-requests"}>
+      <div className="demo-strip" hidden={pathname === "/login" || pathname === "/signup" || pathname === "/dashboard" || pathname.startsWith("/group-match") || pathname.startsWith("/groups") || pathname === "/my-groups" || pathname === "/my-requests" || pathname.startsWith("/travellers/")}>
         <div className="page-container">
           <span>
             Group Travel Matcher{" "}

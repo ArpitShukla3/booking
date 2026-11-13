@@ -17,6 +17,10 @@ function errorHandler(err, req, res, next) {
   if (err.type === 'entity.parse.failed') {
     return res.status(400).json({ error: { message: 'Invalid JSON body' } });
   }
+  // Body over the express.json() limit (100kb)
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: { message: 'Request body is too large' } });
+  }
   console.error(err);
   return res.status(500).json({ error: { message: 'Internal server error' } });
 }

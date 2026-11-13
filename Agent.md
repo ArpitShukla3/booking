@@ -456,6 +456,7 @@ All amounts are whole INR integers. There is no currency conversion.
 | G1 | Filter results | interests / gender composition filters |
 | G2 | Member profiles | profile + groups-a-traveller-is-in endpoint |
 | S1 | Chat | `group_messages` table |
+| X1 | Traveller profile + reviews (demo) | **Done, frontend only**: `/travellers/:travellerId`, real profile + mock reviews/ratings/Reddit-style votes. See `tasks/TASK-X1-traveller-profile-reviews.md`. Real version needs `traveller_reviews` + `votes` tables |
 
 Lookup endpoints the forms will need: `GET /api/interests`, `GET /api/destinations`, `GET /api/departure-cities`.
 
@@ -469,7 +470,9 @@ Each new table goes in a **new migration** (section 6).
 - Home (`/`), discovery (`/group-match`), and details (`/group-match/groups/:group_id`) are implemented. The counter store remains an unused scaffold artifact.
 - This frontend-only discovery phase explicitly uses separate sample-data snapshots and a temporary pure matching utility inside `src/services/mock/`. This is an exception for the browser demo; final production matching and persistence must move to the backend. No API calls are made by these pages.
 - Real account routes: `/signup`, `/login`, protected `/dashboard`. Axios loads signup interests/profiles from the backend. `useTravellerStore` manages seven-day identity without renewing on refresh.
-- `useDemoTravellerStore` retains the separate sample discovery identity. Pending Interested requests remain browser-local demo data; no approval/booking workflow exists.
+- `useDemoTravellerStore` retains the separate sample discovery identity; its Interested state on the old discovery demo stays browser-local.
+- M5 join requests are real (PostgreSQL): Interested on `/groups/:groupId`, owner approve/decline, header bell, My groups notifications, `/my-requests`.
+- X1 traveller profile `/travellers/:travellerId`: real profile; reviews, ratings and up/down votes are **labelled sample data** from `src/services/mock/reputationMock.ts` behind `src/services/reputationService.ts` (votes stored per viewer in `gtm.demo.reputation-votes.v1`). Booking (M6) is not built yet.
 - See `AGENTS.md`, `docs/PROJECT_CONTEXT.md`, and `frontend/README.md` for frontend architecture and checks.
 - **Tailwind is pinned to 3.4.17. Do not upgrade to v4.**
 - Dev server: `http://localhost:5173`. This origin is already allowed by backend CORS.

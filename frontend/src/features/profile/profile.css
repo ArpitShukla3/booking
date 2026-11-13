@@ -1,0 +1,75 @@
+/* Traveller profile: reviews, ratings and Reddit-style votes (demo data). Uses tokens from src/index.css. */
+.pf-back { display: inline-flex; align-items: center; gap: 5px; margin-bottom: 12px; }
+.pf-demo { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 6px; background: var(--warning-bg); color: #6b4a00; font-size: 13px; margin-bottom: 14px; }
+
+.pf-hero { display: flex; gap: 18px; align-items: flex-start; padding: 22px; }
+.pf-avatar { width: 72px; height: 72px; font-size: 30px; flex: none; }
+.pf-hero-body { min-width: 0; flex: 1; }
+.pf-hero h1 { font-size: 28px; }
+.pf-sub { color: var(--secondary-text); margin-top: 2px; }
+.pf-facts { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--secondary-text); margin: 12px 0 14px; }
+.pf-facts > span { display: inline-flex; align-items: center; gap: 5px; }
+.pf-quick-rating { color: var(--text); font-weight: 700; }
+.pf-quick-rating svg { color: var(--search-yellow); fill: var(--search-yellow); }
+.pf-label { font-size: 14px; margin-bottom: 6px; }
+.pf-label small { font-weight: 400; color: var(--booking); }
+
+.pf-grid { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }
+
+/* stars */
+.pf-stars { display: inline-flex; gap: 2px; vertical-align: middle; }
+.pf-star { position: relative; display: inline-block; }
+.pf-star-bg { color: #d9d9d9; fill: #d9d9d9; }
+.pf-star-fill { position: absolute; inset: 0 auto 0 0; overflow: hidden; color: var(--search-yellow); }
+.pf-star-fill svg { fill: var(--search-yellow); }
+
+/* rating summary */
+.pf-rating { padding: 20px; position: sticky; top: 16px; }
+.pf-rating h2 { font-size: 18px; margin-bottom: 10px; }
+.pf-rating-big { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.pf-rating-big > strong { font-size: 40px; line-height: 1; color: var(--booking); }
+.pf-rating-big small { display: block; color: var(--secondary-text); margin-top: 4px; }
+.pf-dist { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 6px; }
+.pf-dist li { display: grid; grid-template-columns: 30px 1fr 22px; gap: 8px; align-items: center; font-size: 12px; }
+.pf-dist li > span:first-child { display: inline-flex; align-items: center; gap: 2px; color: var(--secondary-text); }
+.pf-dist-bar { height: 8px; border-radius: 4px; background: #eee; overflow: hidden; }
+.pf-dist-bar > span { display: block; height: 100%; background: var(--search-yellow); border-radius: 4px; transition: width .6s ease; }
+.pf-dist-n { text-align: right; color: var(--secondary-text); }
+
+/* reviews */
+.pf-reviews { padding: 20px; }
+.pf-reviews-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.pf-reviews-head h2 { display: flex; align-items: center; gap: 8px; font-size: 18px; margin: 0; }
+.pf-review-list { display: grid; gap: 10px; }
+.pf-review { display: flex; gap: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px 12px 8px; transition: border-color .2s, box-shadow .2s; }
+.pf-review:hover { border-color: #c9c9c9; box-shadow: 0 3px 10px rgba(0,0,0,.06); }
+.pf-review-body { min-width: 0; flex: 1; }
+.pf-review-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.pf-review-head small { display: block; color: var(--secondary-text); font-size: 12px; }
+.pf-review p { line-height: 1.6; }
+
+/* Reddit-style votes */
+.pf-vote { display: inline-flex; align-items: center; gap: 2px; border-radius: 99px; background: var(--neutral); padding: 2px; }
+.pf-vote.is-vertical { flex-direction: column; border-radius: 8px; padding: 2px 0; min-width: 40px; }
+.pf-vote-btn { display: grid; place-items: center; width: 32px; height: 30px; border: 0; background: none; border-radius: 6px; color: var(--secondary-text); cursor: pointer; transition: color .15s, background .15s, transform .12s; }
+.pf-vote-btn:hover { background: rgba(0,0,0,.06); }
+.pf-vote-btn:active { transform: scale(.88); }
+.pf-vote-btn:focus-visible { outline: 2px solid var(--action-blue); outline-offset: 1px; }
+.pf-vote-up:hover, .pf-vote-up[aria-pressed="true"] { color: #d93a00; }
+.pf-vote-down:hover, .pf-vote-down[aria-pressed="true"] { color: #6a5cff; }
+.pf-vote-btn[aria-pressed="true"] svg { fill: currentColor; animation: gp-pop .25s ease both; }
+.pf-vote-score { font-weight: 700; font-size: 13px; min-width: 24px; text-align: center; color: var(--text); }
+.pf-vote.is-up .pf-vote-score { color: #d93a00; }
+.pf-vote.is-down .pf-vote-score { color: #6a5cff; }
+
+@media (max-width: 960px) {
+  .pf-grid { grid-template-columns: 1fr; }
+  .pf-rating { position: static; }
+}
+@media (max-width: 600px) {
+  .pf-hero { flex-wrap: wrap; padding: 16px; }
+  .pf-hero-body { flex-basis: 100%; }
+  .pf-hero h1 { font-size: 24px; }
+  .pf-avatar { width: 56px; height: 56px; font-size: 24px; }
+  .pf-review-head { flex-wrap: wrap; }
+}
