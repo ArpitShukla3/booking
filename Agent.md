@@ -174,7 +174,7 @@ Table names match the data-pack file names. Every ID is the stable text ID from 
 | `itinerary` | text | |
 | `created_at`, `updated_at` | timestamptz | |
 
-Index on `city`. `GROUPS` is a non-reserved SQL keyword: `select * from groups` works in Postgres, but quoting it (`"groups"`) in raw SQL is the safe habit. Knex quotes it for you.
+Index on `city`. `GROUPS` is a keyword in SQL, so in raw SQL write `"groups"` in quotes. Knex quotes it for you.
 
 ### `hotels` ← `data/catalog/hotels.json` (49 rows)
 | Column | Type | Notes |
