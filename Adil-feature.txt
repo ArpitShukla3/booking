@@ -1,0 +1,679 @@
+================================================================================
+  GROUP TRAVEL MATCHER  -  FEATURES IMPLEMENTED BY ADIL (git author: eyeaadil)
+  Repository: github.com/ArpitShukla3/booking      Branch: main      Date: 2026-11-13
+================================================================================
+
+CONTENTS
+  1.  Summary: what Adil built
+  2.  Adil's commits
+  3.  Tools and technologies used, and why
+  4.  Architecture Adil followed
+  5.  Feature 1  - Project setup (Adil update 1)
+  6.  Feature 2  - M1 Sign up / Sign in with a 7-day remembered identity
+  7.  Feature 3  - Home page + Group Match discovery prototype
+  8.  Feature 4  - M5 Join requests (Interested -> approve / decline) + notifications
+  9.  Feature 5  - Owner removes members (M5 follow-up)
+  10. Feature 6  - X1 Traveller profile with reviews, rating and Reddit-style votes
+  11. Feature 7  - S1 Team chat (messages, announcements, polls, group settings)
+  12. Feature 8  - "Request body too large" (413) error handling
+  13. State management (complete picture)
+  14. Database tables and migrations Adil added
+  15. Files Adil mainly changed
+  16. Testing (strategy, files, latest results)
+  17. Known limitations / open items
+  18. What Adil can improve in the CURRENT implementation
+  19. NEW features that can be added
+  20. How to run and verify
+
+
+================================================================================
+1. SUMMARY: WHAT ADIL BUILT
+================================================================================
+
+Adil owned the IDENTITY part of Track A (M1) and most of Track B's social flow:
+
+  Area                         Ticket            What the user gets
+  ---------------------------  ----------------  ----------------------------------------------
+  Project setup                (setup)           Pinned Node version, separate Docker project
+  Sign up / sign in            M1                Real PostgreSQL profiles, T-025+ IDs, 7-day
+                                                 remembered sign-in, protected dashboard
+  Home + discovery prototype   (discovery)       Booking.com-style Home and a sample-data
+                                                 Group Match search (later replaced by M3/M4)
+  Join requests                M5                "Interested" button, owner approve/decline,
+                                                 notification bell, My requests page
+  Remove members               M5 follow-up      Owner can remove an approved member
+  Traveller profile            X1                View profile with rating, reviews, up/down votes
+  Team chat                    S1                Group chat after hotel booking: messages,
+                                                 announcements, polls, owner access settings
+  Error handling               (infra)           Clean 413 when a request body is too large
+
+Teammate Arpit (ArpitShukla3) built: initial setup, data seeding, health check, M2 create group,
+M3 search, M4 matching, M6 hotels/booking, X2 live trip status, X3 "Ask the reviews".
+
+
+================================================================================
+2. ADIL'S COMMITS
+================================================================================
+
+  Commit   Message                                                  Size
+  -------  -------------------------------------------------------  -------------------------
+  f5f7611  Adil update 1                                            4 files,   +62
+  735d7dd  Merge origin/main with local setup changes               (merge)
+  2b658a4  SignIn and use creation is implemented                   82 files,  +8,601
+  2aa78ec  request accept and approved                              39 files,  +1,811
+  0b8bdeb  Profile view of Seeker                                   20 files,  +835
+  6fadfc4  feat: owner can remove group members (M5 follow-up)      25 files,  +291
+  509eefa  Merge branch 'main' (combined with M6 hotel booking)     (merge, conflicts resolved)
+  803d828  feat: team chat for booked groups (S1) + ticket sweep    30 files,  +1,717
+
+  See any commit:   git show --stat <commit>
+
+
+================================================================================
+3. TOOLS AND TECHNOLOGIES USED, AND WHY
+================================================================================
+
+BACKEND (backend/)
+  Node.js 24 (.nvmrc 24.22.2)  Same runtime for everyone; Adil pinned it in .nvmrc so
+                               "nvm use" picks the right version.
+  Express 5                    HTTP server. Express 5 forwards rejected promises to the error
+                               handler, so controllers need no try/catch.
+  PostgreSQL 16 (Docker)       Durable state: everything survives a refresh and a backend
+                               restart (an explicit acceptance criterion in every ticket).
+  Knex 3 + pg                  Query builder + migrations. Every schema change is a numbered,
+                               reversible migration; transactions via db.transaction().
+  Zod 4                        Input validation with readable per-field messages
+                               ({ error: { message, fields: { field: "reason" } } }).
+  TypeScript via tsx           Services/controllers/types in .ts without a build step;
+                               "npm run typecheck" runs tsc in noEmit mode.
+  node:test + supertest        Built-in test runner (no extra framework); supertest calls the
+                               Express app in memory for integration tests.
+
+FRONTEND (frontend/)
+  React 19 + Vite 8 + TS       Fast dev server and typed components.
+  React Router 7               Routes such as /signup, /login, /dashboard, /my-requests,
+                               /travellers/:id, /groups/:id/chat; RequireTraveller guards.
+  Zustand 5                    Small global stores (signed-in traveller, demo traveller). No
+                               boilerplate, easy to unit test with an injected API/storage.
+  Axios                        One configured client (src/lib/api.ts) that adds the
+                               X-Traveller-Id header and turns errors into ApiError.
+  React Hook Form + Zod        Signup/login forms: client-side rules mirror the backend rules.
+  Tailwind 3.4.17 + plain CSS  Booking.com look with theme tokens in index.css; feature CSS
+                               files (groups.css, profile.css, chat.css). Tailwind is pinned.
+  shadcn-style UI + lucide     Button, Dialog, Input, Select components and icons.
+  Vitest                       Unit tests for pure logic (vote rules, button states, chat maths).
+  Playwright                   Browser tests against the real backend + database.
+  Oxlint                       Linter (the project uses Oxlint, not ESLint).
+
+WHY THIS SET
+  - Project rules (AGENTS.md / Agent.md) fix the stack; Adil kept to it.
+  - No AI/LLM calls at runtime, no passwords/JWT/OAuth (demo identity = Traveller ID).
+  - Business rules live only in backend services, so the frontend can never bypass them.
+
+
+================================================================================
+4. ARCHITECTURE ADIL FOLLOWED
+================================================================================
+
+BACKEND: router -> controller -> service -> helper  (Agent.md section 4.1)
+
+  routes/<f>.routes.js          URL + middleware (requireTraveller) -> controller
+  controllers/<f>.controller.ts Read req, call ONE service, send status + JSON. No logic.
+  services/<f>.service.ts       ALL business rules, validation, transactions, HttpError.
+                                Exported as one object so unit tests can mock.method() it.
+  helpers/postgres/<f>.helper.js The ONLY place with SQL (Knex). Optional trx parameter last.
+  validation/<f>.validation.ts  Zod schemas.
+  types/<f>.ts                  Row and DTO types.
+
+  Identity: middleware/currentTraveller.js reads the X-Traveller-Id header, checks the
+  traveller exists (401 otherwise) and sets req.traveller.
+
+  Errors: services throw HttpError(400/403/404/409); middleware/errorHandler.js turns them
+  into { error: { message, fields } }.
+
+FRONTEND
+  src/features/<feature>/   Pages, components, pure logic (+ .test.ts) and CSS per feature.
+  src/services/*Service.ts  Typed promise API per backend feature; components only call these.
+  src/types/*.ts            DTO types matching the backend.
+  src/store/*.ts            Zustand stores for global state.
+  src/lib/                  api.ts (Axios), useAsync.ts (data loading), identityStorage.ts.
+
+WORKFLOW
+  Backend: tests first (low = unit with mocked helpers, mid = HTTP integration on the test
+  database booking_test), then helper -> service -> controller -> route.
+  Every feature: ticket in tasks/, contract in tasks/PLAN.md, docs in Agent.md and
+  docs/PROJECT_CONTEXT.md.
+
+
+================================================================================
+5. FEATURE 1 - PROJECT SETUP ("Adil update 1", f5f7611)
+================================================================================
+
+WHAT   .nvmrc (Node 24.22.2); COMPOSE_PROJECT_NAME=booking in backend/.env.example; setup notes
+       in README.md and Agent.md.
+WHY    Everybody runs the same Node version, and this project's Docker container/volume
+       (booking-postgres, booking_pgdata) never clashes with other projects on the machine.
+FILES  .nvmrc, backend/.env.example, README.md, Agent.md
+
+
+================================================================================
+6. FEATURE 2 - M1 SIGN UP / SIGN IN WITH 7-DAY REMEMBERED IDENTITY (2b658a4)
+================================================================================
+
+WHAT THE USER SEES
+  /signup     Form: name, age, gender, home city, 3-letter airport code, interests (loaded
+              from the real catalog), gender preference. Success shows the new Traveller ID.
+  /login      Sign in by Traveller ID only (e.g. T-025). No password (demo identity).
+  /dashboard  Protected profile page: ID with copy button, details, interests, expiry time of
+              the remembered sign-in, logout.
+  Header      Shows the signed-in name + Logout, or Register / Sign in.
+
+BACKEND
+  Endpoints
+    POST /api/travellers               Create profile -> 201 Traveller (DB generates the ID)
+    POST /api/travellers/sign-in       { traveller_id } -> 200 Traveller, or 404 "not found"
+    GET  /api/travellers/:traveller_id Profile restore -> 200 or 404
+    GET  /api/interests                Interest catalog (ID, label, category)
+  Rules (services/travellers.service.ts)
+    - Zod validation (validation/travellers.validation.ts); IDs must match T-<3+ digits>.
+    - Interests must exist in the catalog -> 400 with a field message.
+    - Unique violation (23505) -> 409; any other DB failure -> readable 503.
+  Database
+    Migration 20261113000003_traveller_id_sequence.js
+      - traveller_id_seq starting after the highest seeded ID (T-024), next_traveller_id()
+        produces T-025, T-026, ... (width grows after 999, never truncated)
+      - travellers.traveller_id DEFAULT next_traveller_id(): the DB, not the client, makes IDs.
+    Migration 20261113000004_backfill_missing_travellers.js
+      - Inserts any missing seed travellers/interests without overwriting profiles and moves
+        the sequence forward (never backwards). Also: scripts/seed-travellers.js
+        ("npm run seed:travellers").
+
+FRONTEND
+  Files  features/identity/{SignupPage, LoginPage, DashboardPage, session, schemas,
+         CopyTravellerId}.tsx, store/useTravellerStore.ts, lib/identityStorage.ts,
+         services/travellerService.ts, lib/api.ts
+  Forms  React Hook Form + zodResolver; the signup schema is built from the live interest IDs.
+         Backend field errors are shown next to the fields; input is kept on error.
+
+STATE MANAGEMENT (the core of M1)
+  useTravellerStore (Zustand) is the ONLY owner of identity:
+    state:   traveller, travellerId, expiresAt, isLoading, isInitialized, restoreError,
+             storageWarning, notice
+    actions: signup(), signInWithId(), restoreSession(), logout(), ensureValidSession()
+  Persistence: localStorage key "group_match_active_traveller" stores ONLY
+    { traveller_id, expires_at }. The profile itself always comes from PostgreSQL.
+  Rules:
+    - Only signup or an explicit sign-in starts a new 7-day deadline. Restoring on refresh
+      never extends it.
+    - readIdentity() validates the stored JSON (format, ID pattern, safe integer, not expired);
+      corrupt or expired data is cleared.
+    - Backend 404 on restore -> logout with a message. Network/5xx -> keep the identity and show
+      "Try again" (temporary outage does not sign you out).
+    - Race protection: an "operation" counter discards late responses (e.g. logout during a
+      slow sign-in).
+    - If localStorage can't be written, the user is told to save their Traveller ID.
+  Lifecycle (features/identity/session.tsx):
+    - SessionLifecycle: restores on load; checks expiry on window focus and when the tab
+      becomes visible; a timer logs out exactly at expiry; "storage" events sync other tabs.
+    - RequireTraveller: loading -> spinner; restore error -> retry screen; signed out ->
+      redirect to /login.
+    - HomeSessionRedirect: signed-in users visiting "/" go to /dashboard.
+  Request identity: lib/api.ts adds X-Traveller-Id to every Axios request from the store.
+
+WHY THIS DESIGN
+  The task required real persistence, a seven-day remembered identity and no passwords, JWT,
+  OTP or OAuth. Storing only the ID + deadline keeps the browser copy minimal; the database stays
+  the source of truth.
+
+TESTS  backend/tests/unit/services/travellers.service.test.js,
+       backend/tests/integration/travellers.api.test.js,
+       frontend/src/store/useTravellerStore.test.ts (time is injected, so expiry is tested
+       without waiting 7 days), frontend/src/lib/api.test.ts, Playwright identity journeys.
+
+
+================================================================================
+7. FEATURE 3 - HOME PAGE + GROUP MATCH DISCOVERY PROTOTYPE (in 2b658a4)
+================================================================================
+
+WHAT   Booking.com-style Home (pages/HomePage.tsx), header with category navigation
+       (BookingHeader.tsx), footer, search bar, and a first Group Match discovery page with
+       group cards, match reasons and a mock "Interested" state.
+HOW    Sample-data fixtures (src/data/*.json) and a temporary matching adapter
+       (services/mock/groupMatchMockService.ts + matching.ts), behind
+       services/groupMatchService.ts so it could be swapped for the real API.
+       Separate demo identity: useDemoTravellerStore (key "gtm.active-traveller-id") and
+       mock requests (key "gtm.discovery.requests.v1"), clearly labelled as demo data.
+WHY    The frontend could be built and demoed before the backend matching API existed.
+STATUS Teammate's M3/M4 later replaced the search with the real backend; the demo identity
+       and older discovery pieces remain for the prototype pages.
+FILES  pages/HomePage.tsx, components/layout/{BookingHeader,Footer}.tsx,
+       components/shared/{common,SearchBar}.tsx, components/ui/{dialog,input,checkbox,form}.tsx,
+       features/group-match/*, services/mock/*, data/*, public/images/* (+ CREDITS.md),
+       lib/{format,schemas,searchParams,useAsync}.ts, index.css
+
+
+================================================================================
+8. FEATURE 4 - M5 JOIN REQUESTS + OWNER NOTIFICATIONS (2aa78ec)
+================================================================================
+
+WHAT THE USER SEES
+  Seeker (group page /groups/:groupId):
+    "Interested" button. Disabled with a reason when: you organise the trip, you're already a
+    member, "Request pending", "Request declined", "Removed from group", or "Group is full".
+  Seeker (/my-requests):
+    Every request with group, dates, members, status pill and filter
+    (All / Pending / Approved / Declined / Removed).
+  Owner:
+    - Header bell with the number of pending requests (refreshes on each navigation).
+    - My groups: notification panel "N travellers want to join your trips" (name, age, gender,
+      city, shared interests, time ago, Review button) and a red badge per owned group.
+    - Group page "Join requests" section: seeker card with age, gender, home city, gender
+      preference, interests (shared ones highlighted), Approve / Decline (Decline asks for
+      confirmation); decided requests under "Past decisions".
+
+BACKEND
+  Endpoints (all need X-Traveller-Id)
+    POST /api/groups/:groupId/join-requests      seeker sends request -> 201 PENDING
+    GET  /api/groups/:groupId/join-requests      owner only -> requests + seeker + shared
+    POST /api/join-requests/:requestId/approve   owner only, transaction, 409 if full
+    POST /api/join-requests/:requestId/reject    owner only
+    GET  /api/join-requests/mine                 seeker's requests + group summary
+    GET  /api/join-requests/incoming             owner notifications (pending on owned groups)
+  GET /api/groups/mine now returns the real pending_requests count.
+  Rules (services/joinRequests.service.ts)
+    - requestBlocker(): OWNER / MEMBER / PENDING / REJECTED / REMOVED / FULL -> 409 + message.
+    - One request per (group, seeker): UNIQUE constraint + INSERT ... ON CONFLICT DO NOTHING,
+      so double clicks never create duplicates.
+    - Approve: one transaction -> lock the group row (SELECT ... FOR UPDATE), lock the request,
+      must still be PENDING, re-check size, append to groups.member_ids, set APPROVED.
+      Concurrent approvals for the last spot: exactly one succeeds, others get 409 "full".
+    - Only the owner can list/approve/reject (403 otherwise).
+  Database
+    Migration 20261113000007_create_join_requests.js: join_requests (request_id R-1001+,
+    group_id, seeker_id, status, created_at, decided_at), UNIQUE(group_id, seeker_id),
+    CHECK status, CHECK decided_at is NULL exactly while PENDING.
+
+FRONTEND
+  services/joinRequestService.ts, types/joinRequest.ts,
+  features/groups/joinRequests.ts (pure seekerAction() + labels + timeAgo),
+  features/groups/requestParts.tsx (InterestPanel, OwnerRequestsSection, IncomingRequestsPanel),
+  features/groups/MyRequestsPage.tsx, changes in GroupPage.tsx, MyGroupsPage.tsx,
+  BookingHeader.tsx (bell + "My requests" nav), common.tsx (InterestTags highlight).
+
+STATE MANAGEMENT
+  - Server state loaded with useAsync(read, key): cancellable, retry(), stale responses ignored.
+  - After approve/decline the decision is kept in local component state ({ request_id: status })
+    so the list updates instantly without a reload flash; the group is re-fetched silently
+    ("fresh" state in GroupPage) so members/seat bar update.
+  - Header bell re-reads incoming requests when the route changes (key includes pathname).
+
+TESTS  Backend unit joinRequests.service/controller + groups.service; integration
+       joinRequests.api.test.js (Scenario B Priya -> Sarah approves -> 2/3, duplicates,
+       reject, 403, full-group overflow, concurrent approvals). Frontend joinRequests.test.ts,
+       Playwright joinRequests.spec.ts.
+
+
+================================================================================
+9. FEATURE 5 - OWNER REMOVES MEMBERS (6fadfc4)
+================================================================================
+
+WHAT   Owner sees "Remove" on every member card except their own (confirmation dialog).
+       The spot opens again; the removed traveller sees "Removed from group" and cannot
+       request that group again.
+WHY    The user asked for it; it reverses the ticket's earlier "membership is final" rule
+       (documented in tasks/TASK-M5-join-requests.md).
+BACKEND
+  DELETE /api/groups/:groupId/members/:travellerId  owner only (403), not the owner (400),
+                                                    must be a member (404)
+  groups.service.removeMember(): one transaction -> array_remove from member_ids
+  (groups.helper.removeMember) + mark the join request REMOVED (joinRequests.helper.markRemoved,
+  an upsert, so seeded members with no request row also get one).
+  Migration 20261113000009_join_requests_removed_status.js adds REMOVED to the status CHECK
+  (renumbered from 08 when merging with the teammate's 08 hotel migration).
+FRONTEND  GroupPage.tsx (Remove button + dialog, success/error message, refreshes the request
+          list), groupService.removeMember(), REMOVED label/pill/button state, My requests filter.
+TESTS     groups.service/controller unit tests, 3 integration cases, joinRequests.test.ts,
+          2 Playwright cases.
+
+
+================================================================================
+10. FEATURE 6 - X1 TRAVELLER PROFILE WITH REVIEWS, RATING AND VOTES (0b8bdeb)
+================================================================================
+
+WHAT THE USER SEES
+  "View profile" on every join-request card and on names in My groups notifications opens
+  /travellers/:travellerId:
+    - Real profile from the backend, interests shared with the viewer highlighted.
+    - Reddit-style up / score / down on the profile and on every review (click again to
+      remove, click the other arrow to switch, 1.2k-style scores).
+    - Rating card: average with stars, review count, 5-to-1 star bars, trips completed.
+    - Reviews list sortable by Top / Newest / Highest rated; "Back to <group>" link.
+    - A visible note that ratings, reviews and votes are sample data.
+HOW (as Adil built it)
+  services/mock/reputationMock.ts generated deterministic sample reviews from the traveller ID
+  (seeded random generator), with pure functions applyVote(), voteScore(), compactScore(),
+  sortReviews(). Components call services/reputationService.ts only, so a real API could replace
+  the mock without touching components.
+STATE MANAGEMENT
+  Votes are optimistic local state on the page; the viewer's own votes persist in localStorage
+  key "gtm.demo.reputation-votes.v1", keyed by viewer + target, so they survive a reload and are
+  separate per signed-in traveller.
+LATER CHANGE BY TEAMMATE (X3, fb26ae4)
+  reputationService now loads the review texts from the backend (GET /api/reviews/travellers/:id);
+  votes, profile score and trip count still come from Adil's mock adapter.
+ALSO   0b8bdeb hid the sample-traveller strip on profile pages.
+TESTS  services/mock/reputationMock.test.ts, Playwright profile.spec.ts.
+
+
+================================================================================
+11. FEATURE 7 - S1 TEAM CHAT (803d828)
+================================================================================
+
+WHAT THE USER SEES
+  Group page sidebar: "Chat with team". Disabled (with a lock and reason) until the group has
+  booked its hotel; afterwards it opens /groups/:groupId/chat.
+  Chat page:
+    - Header: group name, Chat ID (C-1001...), members, current access settings.
+    - Messages with sender, "Organiser" tag, MESSAGE ID (M-1001...), CONTENT and TIME; day
+      separators (Today / Yesterday / date). Mine on the right in blue.
+    - Announcements: highlighted yellow card (organiser only).
+    - Polls: question + 2-6 options, bars with %, total votes, "your vote"; tap another option
+      to change your vote.
+    - Composer tabs: Message / Announcement / Poll (locked tabs explain why).
+      Enter sends, Shift+Enter new line, 2,000 character counter.
+    - Owner: "Group settings" dialog: who can send messages, who can create polls
+      (All members / Only the organiser). Members can always vote.
+SIMPLE ACCESS SYSTEM
+  Action               Owner     Member
+  Send messages        always    if messaging = ALL_MEMBERS (default)
+  Create polls         always    if polls = ALL_MEMBERS (default)
+  Announcements        always    never
+  Vote in polls        always    always
+  Change settings      always    never
+BACKEND (mounted at /api/groups/:groupId/chat, all need X-Traveller-Id)
+  GET    /                         chat id, settings, my_permissions, members
+  PATCH  /settings                 owner only: { messaging?, polls? }
+  GET    /messages?after=M-...     oldest first (latest 200 without "after")
+  POST   /messages                 { type: TEXT | ANNOUNCEMENT, content } -> 201
+  POST   /polls                    { question, options[2..6] } -> 201 (one transaction)
+  POST   /polls/:messageId/vote    { option_id } -> one vote per person, can be changed
+  Gate on every call: group exists (404) -> caller is a member (403; removed members lose
+  access) -> group has a booking (409). The chat row is created on first open (safe under
+  concurrent opens: INSERT ... ON CONFLICT DO NOTHING).
+  Pure rules in services/groupChat.service.ts: permissionsFor(), seqOf(), toMessageDto().
+DATABASE  Migration 20261113000010_create_group_chat.js
+  group_chats        chat_id C-1001+ (sequence), group_id UNIQUE, messaging, polls (CHECK)
+  chat_messages      seq bigserial (START 1001), message_id GENERATED ALWAYS AS 'M-' || seq,
+                     type CHECK, content 1..2000 CHECK, created_at
+  chat_poll_options  option_id, message_id, label, position (unique per poll)
+  chat_poll_votes    PRIMARY KEY (message_id, voter_id) -> one vote each, upsert to change
+FRONTEND  features/chat/GroupChatPage.tsx, chatLogic.ts (+ test), chat.css,
+          services/chatService.ts, types/chat.ts, GroupPage.tsx (button), App.tsx (route).
+STATE MANAGEMENT
+  - Chat + messages in page state. Every 4 seconds (only while the tab is visible) it re-reads
+    the latest page of messages and the chat (permissions/settings) and merges them by
+    message ID (mergeMessages() dedupes and sorts numerically, so M-999 < M-1000).
+  - Optimistic poll votes (applyPollVote()) with rollback on error; polling pauses while your
+    own vote is saving so the number doesn't jump back.
+  - Auto-scroll to the newest message unless the user scrolled up to read.
+  - If the owner changes settings, the member's composer switches to an allowed tab.
+BUGS FOUND BY TESTS AND FIXED
+  - Message IDs could restart at M-1 after TRUNCATE ... RESTART IDENTITY -> sequence START 1001.
+  - Other members didn't see updated vote counts -> poll the latest page, not only newer ones.
+TESTS  groupChat.service/controller unit tests, groupChat.api.test.js (7 cases),
+       chatLogic.test.ts, Playwright chat.spec.ts (4 journeys incl. two users chatting).
+
+
+================================================================================
+12. FEATURE 8 - "REQUEST BODY TOO LARGE" HANDLING (in 0b8bdeb)
+================================================================================
+
+WHAT   middleware/errorHandler.js returns 413 { error: { message: 'Request body is too large' } }
+       when a JSON body exceeds express.json()'s 100kb limit, instead of a generic 500.
+TESTS  backend/tests/unit/middleware/errorHandler.test.js, integration/health.api.test.js.
+
+
+--------------------------------------------------------------------------------
+FEATURE 9 - JOIN REQUEST LIFECYCLE FOLLOW-UPS (2026-11-13)
+--------------------------------------------------------------------------------
+WHAT   1. Note with the request: "Interested" opens a dialog with an optional note (max 500).
+          The owner sees it on the request card and in My groups notifications.
+       2. Cancel: the seeker can cancel a pending request (group page and My requests).
+       3. Leave: a member (not the organiser) can leave the group from the group page.
+       4. Auto-close: when an approval fills the last spot, the other pending requests become
+          CLOSED ("Group filled"); the owner's message says how many.
+       5. After booking: removing or leaving shows a warning with the new per-person share; the
+          booking keeps its total and rooms, and members_count + per_member_inr are recalculated.
+RULES  CANCELLED, LEFT and CLOSED can be sent again (the same row becomes PENDING again);
+       REJECTED and REMOVED still block for good.
+BACKEND
+  POST /api/join-requests/:requestId/cancel   seeker only (403), pending only (409)
+  POST /api/groups/:groupId/leave             member only; organiser 400; non-member 404
+  POST /api/groups/:groupId/join-requests     optional { message }
+  approve response: closed_request_ids; remove/leave response: booking_update
+  groups.service.endMembership(): one transaction -> lock group, remove member, record
+  REMOVED/LEFT, re-split the booking (groupHotels.helper.updateBookingSplit).
+  Migration 20261113000013_join_request_lifecycle.js (statuses + message column).
+FRONTEND  requestParts.tsx (note dialog, RequestNote, Cancel request), MyRequestsPage.tsx (cancel,
+          new filters), GroupPage.tsx (Leave group, split warnings), joinRequests.ts
+          (REOPENABLE, splitPreview, perMemberShare), groupService.leaveGroup,
+          joinRequestService.cancel.
+STATE     Cancel and leave update local state at once; leaving re-fetches the group; removal
+          after booking reloads the hotel store so the new share shows everywhere.
+TESTS     joinRequests.service + groups.service unit tests, 5 new integration cases,
+          joinRequests.test.ts, Playwright memberLifecycle.spec.ts (4 journeys).
+
+
+================================================================================
+13. STATE MANAGEMENT (COMPLETE PICTURE)
+================================================================================
+
+  Kind of state                 Where                                  Why
+  ----------------------------  -------------------------------------  -----------------------
+  Signed-in traveller           Zustand useTravellerStore              Global, used by header,
+                                                                       guards, API header
+  Remembered sign-in            localStorage group_match_active_       Only ID + deadline;
+                                traveller {traveller_id, expires_at}   7 days, never extended
+  Demo (sample) traveller       Zustand useDemoTravellerStore +        Kept separate from real
+                                localStorage gtm.active-traveller-id   accounts on purpose
+  Server data (groups,          useAsync(read, key) in components      Simple loading/error/
+  requests, profile, chat)                                             retry, ignores stale
+                                                                       responses
+  Instant UI after actions      Local component state (decided map,    No reload flashes;
+                                fresh group, optimistic votes)         rollback on error
+  Profile votes (demo)          localStorage gtm.demo.reputation-      Per viewer, this
+                                votes.v1                               browser only
+  Chat updates                  4-second polling + mergeMessages()     No websockets needed
+  Forms                         React Hook Form (local)                Validation + errors
+  Truth for everything real     PostgreSQL                             Survives refresh and
+                                                                       restart
+
+  Rule followed: business rules (eligibility, permissions, sizes) live in backend services;
+  the frontend only mirrors them to explain disabled buttons.
+
+
+================================================================================
+14. DATABASE TABLES AND MIGRATIONS ADIL ADDED
+================================================================================
+
+  Migration file                                      Adds
+  --------------------------------------------------  ----------------------------------------
+  20261113000003_traveller_id_sequence.js             traveller_id_seq, next_traveller_id()
+  20261113000004_backfill_missing_travellers.js       idempotent seed backfill
+  20261113000007_create_join_requests.js              join_requests (+ sequence R-1001)
+  20261113000009_join_requests_removed_status.js      REMOVED status
+  20261113000010_create_group_chat.js                 group_chats, chat_messages,
+                                                      chat_poll_options, chat_poll_votes
+
+  Teammate's migrations in between: 05 group IDs, 06 searches, 08 hotels/bookings,
+  11-12 reviews (pgvector).
+
+
+================================================================================
+15. FILES ADIL MAINLY CHANGED
+================================================================================
+
+BACKEND
+  src/routes/        travellers, interests, joinRequests, groupChat (.routes.js);
+                     groups.routes.js (join-requests + remove member); index.js (mounting)
+  src/controllers/   travellers, joinRequests, groupChat (.controller.ts); groups.controller.ts
+  src/services/      travellers, joinRequests, groupChat (.service.ts); groups.service.ts
+  src/helpers/postgres/ travellers, joinRequests, groupChat (.helper.js); groups.helper.js
+                     (lockById, addMember, removeMember)
+  src/validation/    travellers.validation.ts, groupChat.validation.ts
+  src/types/         traveller.ts, joinRequest.ts, groupChat.ts
+  src/middleware/    errorHandler.js (413)
+  migrations/        03, 04, 07, 09, 10
+  scripts/           seed-travellers.js
+  tests/             travellers.*, joinRequests.*, groupChat.*, groups.service/controller,
+                     errorHandler, health
+
+FRONTEND
+  src/features/identity/   SignupPage, LoginPage, DashboardPage, session, schemas, CopyTravellerId
+  src/features/groups/     requestParts.tsx, MyRequestsPage.tsx, joinRequests.ts (+test),
+                           GroupPage.tsx, MyGroupsPage.tsx, groups.css
+  src/features/profile/    TravellerProfilePage.tsx, profile.css
+  src/features/chat/       GroupChatPage.tsx, chatLogic.ts (+test), chat.css
+  src/features/group-match/ discovery prototype pages
+  src/store/               useTravellerStore.ts (+test), useDemoTravellerStore.ts
+  src/services/            travellerService, joinRequestService, chatService, reputationService,
+                           groupService (removeMember), mock/reputationMock (+test),
+                           mock/groupMatchMockService, groupMatchService
+  src/lib/                 api.ts (+test), identityStorage.ts, useAsync.ts, format.ts
+  src/components/          layout/BookingHeader.tsx, Footer.tsx, shared/common.tsx, ui/*
+  src/App.tsx              routes + page titles
+  tests/ (Playwright)      joinRequests.spec.ts, profile.spec.ts, chat.spec.ts, identity specs
+
+DOCS / TICKETS
+  AGENTS.md, Agent.md, README.md, backend/README.md, frontend/README.md,
+  docs/PROJECT_CONTEXT.md, tasks/PLAN.md, tasks/TASK-M1, TASK-M5, TASK-X1, TASK-S1
+  (and the status sweep of TASK-M2), .agents/skills/frontend-features/SKILL.md
+
+
+================================================================================
+16. TESTING (STRATEGY, FILES, LATEST RESULTS)
+================================================================================
+
+  Level            Tool         What
+  ---------------  -----------  -----------------------------------------------------------
+  Backend unit     node:test    Service rules with helpers mocked, controllers, pure functions
+  Backend integr.  supertest    Real HTTP through all 4 layers on the test DB (booking_test)
+  Frontend unit    Vitest       Pure logic: identity storage, vote rules, button states, chat
+  End-to-end       Playwright   Real browser + real backend + real database
+
+  Latest full results (2026-11-13, before the teammate's X3 commit):
+    Backend unit 179/179, backend integration 68/68, Vitest 103/103, production build OK,
+    Playwright 21/21 for chat, join requests, hotels, profile and groups.
+  Known failing: frontend/tests/discovery.spec.ts (7 tests). It never signs in, but /group-match
+  became a protected route in commit 938b633, so it lands on /login.
+
+  Commands
+    cd backend  && npm run test:unit && npm run test:integration    (or: npm test)
+    cd frontend && npm run typecheck && npm run lint && npm test && npm run build
+    cd frontend && npm run test:e2e       (backend must be running on :4000)
+
+
+================================================================================
+17. KNOWN LIMITATIONS / OPEN ITEMS
+================================================================================
+
+  - Identity is a Traveller ID only: anyone who knows an ID can act as that traveller
+    (accepted for the demo; no passwords/JWT by project rule).
+  - Chat is near-real-time (4 s polling), loads only the latest 200 messages, no unread counts.
+  - Profile votes, profile score and trip count are sample data saved per browser.
+  - discovery.spec.ts needs a sign-in step (see section 16).
+  - Database upgrade in progress on Adil's machine: the container was switched to
+    pgvector/pgvector:pg16 for the teammate's X3; still to run:
+      docker exec booking-postgres psql -U booking -d booking -c "REINDEX DATABASE booking"
+      docker exec booking-postgres psql -U booking -d booking_test -c "REINDEX DATABASE booking_test"
+      cd backend && npm run migrate
+  - (Fixed 2026-11-13) Members can now leave; removal/leaving after booking re-splits the cost.
+  - Re-splitting keeps the booked rooms and total; there are no refunds or room changes.
+
+
+================================================================================
+18. WHAT ADIL CAN IMPROVE IN THE CURRENT IMPLEMENTATION
+================================================================================
+
+IDENTITY (M1)
+  1. Add a lightweight secret: a 6-digit PIN or a signed token issued at signup, so knowing an
+     ID is not enough (needs the team to agree, since passwords/JWT were out of scope).
+  2. "Edit my profile" (interests, home city) with the same validation.
+  3. Fix discovery.spec.ts by adding the signInAs() helper used in the other specs.
+
+JOIN REQUESTS / MEMBERS (M5)
+  4. [DONE 2026-11-13] Seeker can cancel a PENDING request; a member can leave a group.
+  5. [DONE 2026-11-13] Optional note with the request, shown to the owner.
+  6. [DONE 2026-11-13] Other pending requests close automatically (CLOSED) when the group fills up.
+  7. [DONE 2026-11-13] Removing/leaving after booking warns and re-splits the cost (same total).
+     Details: see FEATURE 9 below and tasks/TASK-M5-join-requests.md.
+  8. Live bell: poll /api/join-requests/incoming every 30-60 s instead of only on navigation.
+
+PROFILE (X1)
+  9. Store votes in PostgreSQL (votes table, one vote per account) so everyone sees the same
+     score, and remove the localStorage demo votes.
+  10. Allow reviews only from people who completed a trip together (needs a "trip finished" state).
+
+CHAT (S1)
+  11. Unread counter on "Chat with team" and in My groups (store last_read_message_id per member).
+  12. "Load older messages" using a ?before=M-... cursor (today only the latest 200 load).
+  13. Server-Sent Events (SSE) instead of 4 s polling: still plain HTTP, instant delivery.
+  14. Edit/delete own message within 5 minutes; owner can pin an announcement.
+  15. Close a poll, multi-choice polls, show who voted (optional, owner setting).
+  16. Rate limiting per traveller on POST /messages to stop spam.
+
+CODE QUALITY
+  17. Share DTO types between backend and frontend (one types package) so they can't drift.
+  18. Move repeated "openChat / memberGroup" access checks into a shared groupAccess service.
+  19. Add an accessibility check (axe) to the Playwright runs.
+
+
+================================================================================
+19. NEW FEATURES THAT CAN BE ADDED
+================================================================================
+
+  1.  In-app notification centre: one table (notifications) for "request approved",
+      "removed", "new announcement", "poll created", with read/unread and a bell list.
+  2.  Shared trip planner: day-by-day itinerary the group edits together (owner approves
+      changes), linked from the chat.
+  3.  Expense splitting after booking: add costs (taxi, food), who paid, who owes whom
+      (like Splitwise), settle-up summary per member.
+  4.  Group checklist: passport, visa, insurance, packing; each member ticks their own items.
+  5.  Invite link: owner shares a link that pre-fills a join request (still needs approval).
+  6.  Waitlist when a group is full: next request is promoted automatically if someone leaves.
+  7.  Post-trip reviews (real version of X1): members rate each other after check-out; feeds
+      the profile rating and the matching score.
+  8.  Safety features: report a user, block a user, owner-only "women-only group" flag that
+      the matching rules respect.
+  9.  Email or browser push notifications for approvals and announcements.
+  10. Group photo gallery after the trip, shared with members only.
+  11. Calendar export (.ics) of the trip dates and the hotel check-in/out.
+  12. Admin/moderation dashboard: groups, reports, removed members, chat flags.
+  13. Multi-language UI (English/Hindi) using the existing language button in the header.
+  14. Group trip budget tracker: compares spending in the expense splitter with the
+      "approx budget per person" from the group post.
+
+
+================================================================================
+20. HOW TO RUN AND VERIFY
+================================================================================
+
+  Start
+    cd backend  && npm run db:up && npm run migrate && npm run dev     (http://localhost:4000)
+    cd frontend && npm run dev                                         (http://localhost:5173)
+
+  Demo walk-through of Adil's features
+    1. /signup -> create a traveller (gets T-025+) -> /dashboard shows the profile.
+    2. Sign in as T-002 (Priya) -> open a Kyoto group owned by T-001 -> "Interested".
+    3. Sign in as T-001 (Sarah) -> bell shows 1 -> My groups notification -> Review ->
+       "View profile" (X1) -> Approve -> group shows 2/3.
+    4. Book a hotel on the group page (teammate's M6) -> "Chat with team" unlocks.
+    5. Chat: send a message, post an announcement, create a poll; as Priya vote and reply.
+    6. As Sarah open Group settings -> "Only the organiser" -> Priya's composer locks.
+    7. As Sarah remove Priya -> Priya sees "Removed from group" and loses chat access.
+
+  Health check     curl http://localhost:4000/api/health   -> {"status":"ok","db":"up"}
+
+================================================================================
+  End of Adil-feature.txt
+================================================================================

@@ -33,3 +33,11 @@ export interface Group {
 }
 export interface MyGroup extends Group { my_role: 'OWNER' | 'MEMBER'; pending_requests: number; booking: BookingSummary | null }
 export interface GroupDetails extends Group { members: Traveller[] }
+
+/** Booking cost after a member leaves or is removed: same total, new per-member share. */
+export interface BookingSplitChange {
+  booking_id: string; total_inr: number; members_count: number;
+  per_member_before: number; per_member_after: number;
+}
+/** Result of removing a member or leaving: the updated group, plus the booking change if any. */
+export interface MembershipChange extends Group { booking_update: BookingSplitChange | null }

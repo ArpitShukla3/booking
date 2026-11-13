@@ -15,3 +15,6 @@ export async function getGroup(req: Request, res: Response) {
 export async function removeMember(req: Request, res: Response) {
   res.status(200).json(await groupsService.removeMember((req as WithTraveller).traveller.traveller_id, String(req.params.groupId), String(req.params.travellerId)));
 }
+export async function leaveGroup(req: Request, res: Response) {
+  res.status(200).json(await groupsService.leaveGroup((req as WithTraveller).traveller.traveller_id, String(req.params.groupId)));
+}

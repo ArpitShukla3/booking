@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarDays, ChevronRight, Crown, MapPin, Search } from 'lucide-react';
+import { CalendarDays, ChevronRight, Crown, Loader2, MapPin, Search, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState, ErrorState, PageContainer, Photo } from '@/components/shared/common';
 import { tripDates } from '@/lib/format';
@@ -9,22 +9,40 @@ import { joinRequestService } from '@/services/joinRequestService';
 import { useTravellerStore } from '@/store/useTravellerStore';
 import type { JoinRequestStatus, MyJoinRequest } from '@/types/joinRequest';
 import { SeatBar } from './parts';
-import { RequestStatusPill } from './requestParts';
+import { RequestNote, RequestStatusPill } from './requestParts';
 import { requestStatusLabel, timeAgo } from './joinRequests';
 import { cityPhoto, stagger } from './media';
 import './groups.css';
 
 type Filter = 'ALL' | JoinRequestStatus;
-const FILTERS: Filter[] = ['ALL', 'PENDING', 'APPROVED', 'REJECTED', 'REMOVED'];
+const FILTERS: Filter[] = ['ALL', 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED', 'LEFT', 'CLOSED', 'REMOVED'];
 
 const STATUS_NOTE: Record<JoinRequestStatus, string> = {
   PENDING: 'Waiting for the organiser to review your request.',
   APPROVED: 'You’re in! Open the group to meet your travel buddies.',
   REJECTED: 'The organiser declined this request.',
   REMOVED: 'The organiser removed you from this group.',
+  CANCELLED: 'You cancelled this request. You can ask to join again from the group page.',
+  LEFT: 'You left this group. You can ask to join again if there is a spot.',
+  CLOSED: 'The group filled up before your request was reviewed. You can ask again if a spot opens.',
 };
 
-function RequestCard({ request, index }: { request: MyJoinRequest; index: number }) {
+function RequestCard({ request, index, onCancelled }: { request: MyJoinRequest; index: number; onCancelled: (id: string) => void }) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  async function cancel() {
+    if (!useTravellerStore.getState().ensureValidSession()) return;
+    setPending(true);
+    setError('');
+    try {
+      await joinRequestService.cancel(request.request_id);
+      onCancelled(request.request_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not cancel the request.');
+    } finally {
+      setPending(false);
+    }
+  }
   const { group } = request;
   const photo = cityPhoto(group.city, 600);
   return (
@@ -47,12 +65,19 @@ function RequestCard({ request, index }: { request: MyJoinRequest; index: number
           <span className="text-sm"><b>{group.members_count}/{group.max_size}</b> members</span>
         </div>
         <p className="text-sm text-muted-foreground">{STATUS_NOTE[request.status]}</p>
+        <RequestNote message={request.message} compact />
+        {error ? <p role="alert" className="field-error">{error}</p> : null}
       </div>
       <div className="gp-card-side">
         <small className="text-muted-foreground">
           Sent {timeAgo(request.created_at)}
           {request.decided_at ? <><br />{requestStatusLabel(request.status)} {timeAgo(request.decided_at)}</> : null}
         </small>
+        {request.status === 'PENDING' ? (
+          <Button variant="outline" size="sm" disabled={pending} onClick={cancel} aria-label={`Cancel your request for ${group.name}`}>
+            {pending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Undo2 size={14} aria-hidden="true" />}Cancel request
+          </Button>
+        ) : null}
         <Button asChild variant={request.status === 'APPROVED' ? 'default' : 'outline'}>
           <Link to={`/groups/${group.group_id}`}>View group <ChevronRight size={16} aria-hidden="true" /></Link>
         </Button>
@@ -65,7 +90,11 @@ export default function MyRequestsPage() {
   const traveller = useTravellerStore((s) => s.traveller)!;
   const query = useAsync(() => joinRequestService.listMine(), `my-requests:${traveller.traveller_id}`);
   const [filter, setFilter] = useState<Filter>('ALL');
-  const requests = useMemo(() => query.data ?? [], [query.data]);
+  const [cancelled, setCancelled] = useState<string[]>([]);
+  const requests = useMemo(
+    () => (query.data ?? []).map((r) => (cancelled.includes(r.request_id) ? { ...r, status: 'CANCELLED' as const, decided_at: new Date().toISOString() } : r)),
+    [query.data, cancelled],
+  );
   const count = (f: Filter) => (f === 'ALL' ? requests.length : requests.filter((r) => r.status === f).length);
   const visible = requests.filter((r) => filter === 'ALL' || r.status === filter);
 
@@ -104,7 +133,7 @@ export default function MyRequestsPage() {
             </div>
             {visible.length ? (
               <div className="gp-list" key={filter}>
-                {visible.map((r, i) => <RequestCard key={r.request_id} request={r} index={i} />)}
+                {visible.map((r, i) => <RequestCard key={r.request_id} request={r} index={i} onCancelled={(id) => setCancelled((all) => [...all, id])} />)}
               </div>
             ) : (
               <EmptyState title="Nothing with this status">

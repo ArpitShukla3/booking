@@ -5,7 +5,7 @@ type WithTraveller = Request & { traveller: { traveller_id: string } };
 const me = (req: Request) => (req as WithTraveller).traveller.traveller_id;
 
 export async function createRequest(req: Request, res: Response) {
-  res.status(201).json(await joinRequestsService.createRequest(me(req), String(req.params.groupId)));
+  res.status(201).json(await joinRequestsService.createRequest(me(req), String(req.params.groupId), req.body));
 }
 export async function listForGroup(req: Request, res: Response) {
   res.status(200).json(await joinRequestsService.listForGroup(me(req), String(req.params.groupId)));
@@ -21,4 +21,7 @@ export async function approve(req: Request, res: Response) {
 }
 export async function reject(req: Request, res: Response) {
   res.status(200).json(await joinRequestsService.reject(me(req), String(req.params.requestId)));
+}
+export async function cancel(req: Request, res: Response) {
+  res.status(200).json(await joinRequestsService.cancel(me(req), String(req.params.requestId)));
 }

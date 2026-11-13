@@ -6,7 +6,7 @@ const { db, truncate, closeDb } = require('../helpers/db');
 // Approvals change the seeded G-01 member list, so snapshot it and put it back.
 let originalG01;
 const restoreG01 = () => db('groups').where({ group_id: 'G-01' }).update({ member_ids: originalG01 });
-const reset = async () => { await truncate('join_requests'); await restoreG01(); };
+const reset = async () => { await truncate('join_requests', 'group_bookings'); await restoreG01(); };
 
 describe('Join requests API (M5)', () => {
   before(async () => { originalG01 = (await db('groups').where({ group_id: 'G-01' }).first()).member_ids; });
@@ -97,7 +97,8 @@ describe('Join requests API (M5)', () => {
     assert.match(overflow.body.error.message, /full/i);
     const g = await db('groups').where({ group_id: 'G-01' }).first();
     assert.equal(g.member_ids.length, max_size);
-    assert.equal((await db('join_requests').where({ request_id: b.body.request_id }).first()).status, 'PENDING');
+    // Filling the group closed b automatically (M5 follow-up), so it can never overflow it.
+    assert.equal((await db('join_requests').where({ request_id: b.body.request_id }).first()).status, 'CLOSED');
 
     const late = await asTraveller('T-004').post('/api/groups/G-01/join-requests');
     assert.equal(late.status, 409);
@@ -163,5 +164,88 @@ describe('Join requests API (M5)', () => {
     assert.equal((await asTraveller('T-001').delete('/api/groups/G-424242/members/T-010')).status, 404);
     assert.equal((await api().delete('/api/groups/G-01/members/T-010')).status, 401);
     assert.ok((await db('groups').where({ group_id: 'G-01' }).first()).member_ids.includes('T-010'));
+  });
+
+  it('a note travels with the request to the owner and back to the seeker', async () => {
+    const sent = await asTraveller('T-002').post('/api/groups/G-01/join-requests').send({ message: '  Temples and ramen, yes please!  ' });
+    assert.equal(sent.status, 201);
+    assert.equal(sent.body.message, 'Temples and ramen, yes please!');
+    assert.equal((await asTraveller('T-001').get('/api/groups/G-01/join-requests')).body[0].message, 'Temples and ramen, yes please!');
+    assert.equal((await asTraveller('T-001').get('/api/join-requests/incoming')).body[0].message, 'Temples and ramen, yes please!');
+    assert.equal((await asTraveller('T-002').get('/api/join-requests/mine')).body[0].message, 'Temples and ramen, yes please!');
+    const tooLong = await asTraveller('T-003').post('/api/groups/G-01/join-requests').send({ message: 'x'.repeat(501) });
+    assert.equal(tooLong.status, 400);
+    assert.ok(tooLong.body.error.fields.message);
+  });
+
+  it('seeker cancels a pending request and can send a new one (same row, PENDING again)', async () => {
+    const sent = await asTraveller('T-002').post('/api/groups/G-01/join-requests');
+    assert.equal((await asTraveller('T-003').post(`/api/join-requests/${sent.body.request_id}/cancel`)).status, 403);
+    const cancelled = await asTraveller('T-002').post(`/api/join-requests/${sent.body.request_id}/cancel`);
+    assert.equal(cancelled.status, 200);
+    assert.equal(cancelled.body.status, 'CANCELLED');
+    assert.equal((await asTraveller('T-002').post(`/api/join-requests/${sent.body.request_id}/cancel`)).status, 409);
+    assert.equal((await asTraveller('T-001').get('/api/groups/mine')).body.find((g) => g.group_id === 'G-01').pending_requests, 0);
+
+    const again = await asTraveller('T-002').post('/api/groups/G-01/join-requests').send({ message: 'Changed my mind!' });
+    assert.equal(again.status, 201);
+    assert.equal(again.body.request_id, sent.body.request_id);
+    assert.equal(again.body.status, 'PENDING');
+    assert.equal(again.body.decided_at, null);
+    assert.equal(Number((await db('join_requests').where({ group_id: 'G-01', seeker_id: 'T-002' }).count('* as n').first()).n), 1);
+  });
+
+  it('a member leaves (LEFT), can ask again, and the owner cannot leave', async () => {
+    const sent = await asTraveller('T-002').post('/api/groups/G-01/join-requests');
+    await asTraveller('T-001').post(`/api/join-requests/${sent.body.request_id}/approve`);
+    assert.equal((await asTraveller('T-001').post('/api/groups/G-01/leave')).status, 400);
+    assert.equal((await asTraveller('T-005').post('/api/groups/G-01/leave')).status, 404);
+
+    const left = await asTraveller('T-002').post('/api/groups/G-01/leave');
+    assert.equal(left.status, 200, JSON.stringify(left.body));
+    assert.ok(!left.body.member_ids.includes('T-002'));
+    assert.equal(left.body.booking_update, null);
+    assert.equal((await db('join_requests').where({ request_id: sent.body.request_id }).first()).status, 'LEFT');
+    assert.equal((await asTraveller('T-002').post('/api/groups/G-01/join-requests')).status, 201);
+  });
+
+  it('approving the last spot closes the other pending requests; they can ask again when a spot opens', async () => {
+    const { max_size } = await db('groups').where({ group_id: 'G-01' }).first();
+    const fillers = ['T-010', 'T-011', 'T-012'].slice(0, max_size - originalG01.length - 1);
+    await db('groups').where({ group_id: 'G-01' }).update({ member_ids: [...originalG01, ...fillers] }); // one spot left
+    const a = await asTraveller('T-002').post('/api/groups/G-01/join-requests');
+    const b = await asTraveller('T-003').post('/api/groups/G-01/join-requests');
+    const c = await asTraveller('T-004').post('/api/groups/G-01/join-requests');
+
+    const approved = await asTraveller('T-001').post(`/api/join-requests/${a.body.request_id}/approve`);
+    assert.equal(approved.status, 200);
+    assert.deepEqual([...approved.body.closed_request_ids].sort(), [b.body.request_id, c.body.request_id].sort());
+    assert.equal((await db('join_requests').where({ request_id: b.body.request_id }).first()).status, 'CLOSED');
+    assert.equal((await asTraveller('T-001').get('/api/join-requests/incoming')).body.length, 0);
+    assert.equal((await asTraveller('T-003').post('/api/groups/G-01/join-requests')).status, 409); // still full
+
+    await asTraveller('T-002').post('/api/groups/G-01/leave'); // a spot opens
+    const reopened = await asTraveller('T-003').post('/api/groups/G-01/join-requests');
+    assert.equal(reopened.status, 201);
+    assert.equal(reopened.body.request_id, b.body.request_id);
+  });
+
+  it('removing or leaving after booking re-splits the same total over the remaining members', async () => {
+    const sent = await asTraveller('T-002').post('/api/groups/G-01/join-requests');
+    await asTraveller('T-001').post(`/api/join-requests/${sent.body.request_id}/approve`);
+    const members = originalG01.length + 1;
+    const room = await db({ r: 'rooms' }).join({ h: 'hotels' }, 'h.hotel_id', 'r.hotel_id').where('h.city', 'Kyoto').select('r.room_id').first();
+    await db('group_bookings').insert({ group_id: 'G-01', room_id: room.room_id, rooms_count: 1, nights: 5, total_inr: 23800, per_member_inr: Math.round(23800 / members), members_count: members, booked_by: 'T-001' });
+
+    const removed = await asTraveller('T-001').delete('/api/groups/G-01/members/T-002');
+    assert.equal(removed.status, 200);
+    assert.deepEqual(removed.body.booking_update, {
+      booking_id: removed.body.booking_update.booking_id, total_inr: 23800, members_count: members - 1,
+      per_member_before: Math.round(23800 / members), per_member_after: Math.round(23800 / (members - 1)),
+    });
+    const booking = await db('group_bookings').where({ group_id: 'G-01' }).first();
+    assert.equal(booking.total_inr, 23800);
+    assert.equal(booking.members_count, members - 1);
+    assert.equal(booking.per_member_inr, Math.round(23800 / (members - 1)));
   });
 });

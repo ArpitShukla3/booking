@@ -1,14 +1,17 @@
 import type { Group } from './group.ts';
 import type { Traveller } from './traveller.ts';
 
-export type JoinRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED';
+export type JoinRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED' | 'CANCELLED' | 'LEFT' | 'CLOSED';
+
+/** Ended requests the seeker may re-open with a new request (cancelled, left, group filled up). */
+export type ReopenableStatus = 'CANCELLED' | 'LEFT' | 'CLOSED';
 
 /** Why a seeker cannot send a request right now (null = they can). */
 export type RequestBlocker = 'OWNER' | 'MEMBER' | 'FULL' | 'PENDING' | 'REJECTED' | 'APPROVED' | 'REMOVED';
 
 /** Row returned by joinRequests.helper (plain columns). */
 export interface JoinRequestRow {
-  request_id: string; group_id: string; seeker_id: string; status: JoinRequestStatus;
+  request_id: string; group_id: string; seeker_id: string; status: JoinRequestStatus; message: string | null;
   created_at: string | Date; decided_at: string | Date | null;
 }
 export type SeekerColumns = Omit<Traveller, 'traveller_id'>;
@@ -34,4 +37,8 @@ export interface IncomingJoinRequest extends OwnerJoinRequest { group: RequestGr
 /** What the seeker sees in My Requests. */
 export interface MyJoinRequest extends JoinRequest { group: RequestGroup }
 /** Approve result: the request plus the group's new size. */
-export interface DecidedJoinRequest extends JoinRequest { group?: Group }
+export interface DecidedJoinRequest extends JoinRequest {
+  group?: Group;
+  /** Approve only: other pending requests closed because the group just filled up. */
+  closed_request_ids?: string[];
+}

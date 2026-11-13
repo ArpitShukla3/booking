@@ -55,8 +55,29 @@ A seeker clicks **"Interested"** on a group. The group owner sees the pending re
 - Updates `groups.member_ids` on approval
 - Migration: new file. Track B owns it.
 
+### Request lifecycle follow-ups (added 2026-11-13, user request)
+1. **Note with the request.** "Interested" opens a dialog with an optional note (≤ 500 chars, blank → none). The owner sees it
+   on the request card and in My groups notifications; the seeker sees it in My requests.
+2. **Seeker cancels** their own PENDING request (`POST /api/join-requests/:id/cancel`, 403 for others, 409 if decided) →
+   `CANCELLED`. They can ask again later.
+3. **Member leaves** (`POST /api/groups/:groupId/leave`; the owner can't, 400; non-member 404) → `LEFT`, spot reopens,
+   they lose hotels/chat access and can ask again later.
+4. **Group fills up → other requests close.** When an approval takes the last spot, every other PENDING request of that group
+   becomes `CLOSED` in the same transaction; the owner's message says how many were closed. A closed request can be sent
+   again if a spot opens.
+5. **Removal / leaving after booking.** The dialog warns that the hotel is booked and shows the new per-person share. In the
+   same transaction the booking keeps its rooms and total; `members_count` and `per_member_inr = round(total ÷ members)`
+   are recalculated. The API returns `booking_update {per_member_before, per_member_after, …}`.
+
+Re-requesting after `CANCELLED` / `LEFT` / `CLOSED` re-opens the **same row** (still one row per group + seeker).
+`REJECTED` and `REMOVED` still block for good. Migration `20261113000013_join_request_lifecycle.js` adds the 3 statuses and
+`join_requests.message`.
+
+- [ ] Note, cancel + ask again, leave + ask again, auto-close when full, and booking re-split work end to end (tick after
+      `joinRequests.api.test.js` and Playwright `memberLifecycle.spec.ts` pass).
+
 ## Out of scope
-- Waitlists, cancelling a request, a member leaving on their own, re-inviting a removed member
+- Waitlists (automatic promotion when a spot opens), re-inviting a removed member, refunds when the cost split changes
 
 ## Execution plan / implementation (2026-11-13)
 - Backend: migration `20261113000007_create_join_requests.js`; `joinRequests.helper.js` → `joinRequests.service.ts` → `joinRequests.controller.ts` → `joinRequests.routes.js` (+ two routes in `groups.routes.js`). `groups.helper` gained `lockById` (SELECT … FOR UPDATE) and `addMember` (conditional `array_append`). Approval locks the group row, re-checks size and updates request + `member_ids` in one transaction.

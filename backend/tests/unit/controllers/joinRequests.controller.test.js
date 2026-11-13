@@ -14,7 +14,7 @@ describe('joinRequests.controller', () => {
     const res = mockRes();
     await controller.createRequest(as('T-002', { params: { groupId: 'G-01' } }), res);
     assert.equal(res.statusCode, 201);
-    assert.deepEqual(create.mock.calls[0].arguments, ['T-002', 'G-01']);
+    assert.deepEqual(create.mock.calls[0].arguments, ['T-002', 'G-01', undefined]);
   });
 
   it('approve / reject → 200 with the decided request', async () => {
@@ -35,5 +35,16 @@ describe('joinRequests.controller', () => {
     await controller.listMine(as('T-002'), res);
     assert.equal(res.statusCode, 200);
     assert.deepEqual(res.body, []);
+  });
+
+  it('createRequest passes the body (note); cancel → 200', async () => {
+    const create = mock.method(service, 'createRequest', async () => ({ status: 'PENDING' }));
+    mock.method(service, 'cancel', async () => ({ status: 'CANCELLED' }));
+    await controller.createRequest(as('T-002', { params: { groupId: 'G-01' }, body: { message: 'Hi' } }), mockRes());
+    assert.deepEqual(create.mock.calls[0].arguments, ['T-002', 'G-01', { message: 'Hi' }]);
+    const res = mockRes();
+    await controller.cancel(as('T-002', { params: { requestId: 'R-1001' } }), res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.status, 'CANCELLED');
   });
 });

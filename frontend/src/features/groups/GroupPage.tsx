@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { CalendarDays, CheckCircle2, ChevronRight, Copy, Crown, Hotel, Loader2, Lock, MapPin, MessageCircle, Moon, UserMinus, UserPlus, UsersRound, Wallet } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ChevronRight, Copy, Crown, Hotel, Loader2, Lock, LogOut, MapPin, MessageCircle, Moon, UserMinus, UserPlus, UsersRound, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState, ErrorState, InterestTags, PageContainer, Photo } from '@/components/shared/common';
@@ -14,6 +14,8 @@ import type { Traveller } from '@/types/traveller';
 import { SeatBar, StagePill, TripProgress } from './parts';
 import { hotelProgressOf, liveStage } from './tripFlow';
 import { InterestPanel, OwnerRequestsSection } from './requestParts';
+import { splitPreview } from './joinRequests';
+import type { MembershipChange } from '@/types/group';
 import { cityPhoto, stagger } from './media';
 import { sizeLabel } from './schema';
 import { GroupHotelsSection } from '@/features/hotels/GroupHotelsSection';
@@ -89,14 +91,41 @@ function GroupView({ group, created, reload }: { group: GroupDetails; created: b
   // Bumped after a removal so the owner's request list reloads (the removed request shows as "Removed").
   const [removals, setRemovals] = useState(0);
 
+  const [leaving, setLeaving] = useState(false);
+  const [leavePending, setLeavePending] = useState(false);
+  const removePreview = removing ? splitPreview(hotels.booking, group.members_count - 1) : null;
+
+  /** " Hotel cost is now ₹X per person (was ₹Y)." when the booking was re-split. */
+  const splitText = (change: MembershipChange) => (change.booking_update
+    ? ` The hotel total stays ${money(change.booking_update.total_inr)}; it is now ${money(change.booking_update.per_member_after)} per person (was ${money(change.booking_update.per_member_before)}).`
+    : '');
+
+  async function leaveGroup() {
+    if (!useTravellerStore.getState().ensureValidSession()) return;
+    setLeavePending(true);
+    setRemoveMessage(null);
+    try {
+      const change = await groupService.leaveGroup(group.group_id);
+      setLeaving(false);
+      setRemoveMessage({ kind: 'ok', text: `You left ${group.name}.${splitText(change)} You can ask to join again if there is a spot.` });
+      await reload();
+    } catch (err) {
+      setLeaving(false);
+      setRemoveMessage({ kind: 'error', text: err instanceof Error ? err.message : 'Could not leave the group. Please try again.' });
+    } finally {
+      setLeavePending(false);
+    }
+  }
+
   async function removeMember(member: Traveller) {
     if (!useTravellerStore.getState().ensureValidSession()) return;
     setRemovePending(true);
     setRemoveMessage(null);
     try {
-      await groupService.removeMember(group.group_id, member.traveller_id);
+      const change = await groupService.removeMember(group.group_id, member.traveller_id);
       setRemoving(null);
-      setRemoveMessage({ kind: 'ok', text: `${member.name} was removed from the group.` });
+      setRemoveMessage({ kind: 'ok', text: `${member.name} was removed from the group.${splitText(change)}` });
+      if (change.booking_update && me) void useGroupHotelStore.getState().load(me, group.group_id);
       setRemovals((n) => n + 1);
       await reload();
     } catch (err) {
@@ -199,6 +228,9 @@ function GroupView({ group, created, reload }: { group: GroupDetails; created: b
                   </Button>
                 )
               ) : null}
+              {isMember && !isOwner ? (
+                <Button variant="ghost" className="gp-leave-btn" onClick={() => setLeaving(true)}><LogOut size={16} aria-hidden="true" />Leave group</Button>
+              ) : null}
               <CopyLink />
             </div>
             <p className="field-hint mt-3">{isMember ? (hotels.booking ? 'Your hotel is booked. Plan the rest of the trip in the team chat.' : 'Members search, shortlist and finalise one hotel for the whole group. The team chat opens after booking.') : 'Hotel search and booking are for group members only.'}</p>
@@ -216,10 +248,33 @@ function GroupView({ group, created, reload }: { group: GroupDetails; created: b
       <Dialog open={!!removing} onOpenChange={(open) => { if (!open && !removePending) setRemoving(null); }}
         title={`Remove ${removing?.name ?? 'this member'} from the group?`}
         description="Their spot opens up again. They will see that they were removed and won’t be able to ask to join this group again.">
+        {removePreview ? (
+          <p className="gp-split-warning" role="note">
+            <Hotel size={16} aria-hidden="true" />
+            <span>This group has already booked <b>{hotels.booking?.hotel.name}</b>. The total stays <b>{money(removePreview.total)}</b>, so each of the {removePreview.membersAfter} remaining members will pay <b>{money(removePreview.after)}</b> instead of {money(removePreview.before)}.</span>
+          </p>
+        ) : null}
         <div className="flex flex-wrap gap-3">
           <Button variant="outline" disabled={removePending} onClick={() => setRemoving(null)}>Keep member</Button>
           <Button variant="destructive" disabled={removePending} onClick={() => { if (removing) void removeMember(removing); }}>
             {removePending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <UserMinus size={14} aria-hidden="true" />}Remove member
+          </Button>
+        </div>
+      </Dialog>
+
+      <Dialog open={leaving} onOpenChange={(open) => { if (!open && !leavePending) setLeaving(false); }}
+        title={`Leave ${group.name}?`}
+        description="Your spot opens up for someone else and you lose access to the group’s hotels and team chat. You can ask to join again later if there is a spot.">
+        {hotels.booking ? (
+          <p className="gp-split-warning" role="note">
+            <Hotel size={16} aria-hidden="true" />
+            <span>The group has booked <b>{hotels.booking.hotel.name}</b>. The total stays <b>{money(hotels.booking.total_inr)}</b>, so the other {group.members_count - 1} member{group.members_count - 1 === 1 ? '' : 's'} will each pay <b>{money(splitPreview(hotels.booking, group.members_count - 1)!.after)}</b> instead of {money(hotels.booking.per_member_inr)}.</span>
+          </p>
+        ) : null}
+        <div className="flex flex-wrap gap-3">
+          <Button variant="outline" disabled={leavePending} onClick={() => setLeaving(false)}>Stay in the group</Button>
+          <Button variant="destructive" disabled={leavePending} onClick={() => { void leaveGroup(); }}>
+            {leavePending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <LogOut size={14} aria-hidden="true" />}Leave group
           </Button>
         </div>
       </Dialog>

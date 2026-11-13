@@ -1,7 +1,7 @@
 import type { Group } from './group';
 import type { Traveller } from './traveller';
 
-export type JoinRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED';
+export type JoinRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED' | 'CANCELLED' | 'LEFT' | 'CLOSED';
 
 /** A seeker's "Interested" request (M5) as returned by the backend. */
 export interface JoinRequest {
@@ -9,6 +9,8 @@ export interface JoinRequest {
   group_id: string;
   seeker_id: string;
   status: JoinRequestStatus;
+  /** Optional note from the seeker to the organiser. */
+  message: string | null;
   created_at: string;
   decided_at: string | null;
 }
@@ -30,4 +32,8 @@ export interface OwnerJoinRequest extends JoinRequest { seeker: Traveller; share
 export interface IncomingJoinRequest extends OwnerJoinRequest { group: RequestGroup }
 /** Seeker view in My requests. */
 export interface MyJoinRequest extends JoinRequest { group: RequestGroup }
-export interface DecidedJoinRequest extends JoinRequest { group?: Group }
+export interface DecidedJoinRequest extends JoinRequest {
+  group?: Group;
+  /** Approve only: other pending requests closed because the group just filled up. */
+  closed_request_ids?: string[];
+}

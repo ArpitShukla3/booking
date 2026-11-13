@@ -158,7 +158,11 @@ M5 join-request endpoints (all need `X-Traveller-Id`; `joinRequests.{routes,cont
 | POST | `/api/join-requests/:requestId/reject` | Owner only → `REJECTED` (final; seeker cannot ask again) |
 | GET | `/api/join-requests/mine` | Seeker's requests with group summary and status |
 | GET | `/api/join-requests/incoming` | Owner notifications: pending requests on all owned groups |
-| DELETE | `/api/groups/:groupId/members/:travellerId` | Owner only (403); not the owner (400); not a member (404). One transaction: `array_remove` from `member_ids` + request → `REMOVED` (blocks re-requesting) |
+| DELETE | `/api/groups/:groupId/members/:travellerId` | Owner only (403); not the owner (400); not a member (404). One transaction: lock group, `array_remove` from `member_ids`, request → `REMOVED` (blocks re-requesting), and if booked re-split `per_member_inr` over the remaining members (returned as `booking_update`) |
+| POST | `/api/groups/:groupId/leave` | A member leaves (owner 400, non-member 404). Same transaction as removal but status `LEFT` (can ask again) |
+| POST | `/api/join-requests/:requestId/cancel` | Seeker only (403), PENDING only (409) → `CANCELLED` (can ask again) |
+
+Request body for `POST /api/groups/:groupId/join-requests`: optional `{ message }` (≤ 500 chars). A `CANCELLED`, `LEFT` or `CLOSED` request is re-opened (same row). When an approval fills the group, the other pending requests become `CLOSED` and the approve response lists them in `closed_request_ids`.
 
 `GET /api/groups/mine` now returns the real `pending_requests` count for owned groups.
 
@@ -356,7 +360,8 @@ Index on `city`. `GROUPS` is a non-reserved SQL keyword: `select * from groups` 
 | `request_id` | text PK | `R-1001`, `R-1002`, … from `join_request_id_seq` |
 | `group_id` | text FK → groups | ON DELETE CASCADE |
 | `seeker_id` | text FK → travellers | ON DELETE CASCADE |
-| `status` | text | CHECK `PENDING` / `APPROVED` / `REJECTED` / `REMOVED` (owner removed the member) |
+| `status` | text | CHECK `PENDING` / `APPROVED` / `REJECTED` / `REMOVED` / `CANCELLED` / `LEFT` / `CLOSED`. REJECTED and REMOVED block re-requests; CANCELLED, LEFT, CLOSED can be re-opened |
+| `message` | text | optional note from the seeker, 1–500 chars (CHECK) |
 | `created_at` | timestamptz | |
 | `decided_at` | timestamptz | NULL exactly while `PENDING` (CHECK) |
 
@@ -466,6 +471,7 @@ Migrations are in `backend/migrations/` and are managed by Knex. Knex runs each 
 | `20261113000009_join_requests_removed_status.js` | Adds `REMOVED` to the `join_requests` status check. `down` converts REMOVED rows to REJECTED and restores the old check. |
 | `20261113000011_create_reviews.js` | X3: `CREATE EXTENSION vector`, `reviews`, `review_chunks` (+ HNSW index), `review_questions`. `down` drops them and the extension. |
 | `20261113000012_seed_reviews.js` | X3: loads `data/reviews/corpus.json` and, when present, `data/reviews/index.json` (contexts + embeddings). No model calls. `down` empties the three tables. |
+| `20261113000013_join_request_lifecycle.js` | M5 follow-ups: statuses `CANCELLED`, `LEFT`, `CLOSED` and `join_requests.message` (≤ 500). `down` maps CANCELLED/CLOSED → REJECTED, LEFT → REMOVED and drops the column. |
 | `20261113000010_create_group_chat.js` | S1: `group_chats` (`C-1001`+, unique per group, access settings), `chat_messages` (`seq` from 1001 + generated `message_id` `M-…`), `chat_poll_options`, `chat_poll_votes`. `down` drops the four tables and the sequence. |
 
 On a fresh database after `npm run migrate`, the row counts are: interests 16, travellers 24, groups 12, destinations 5, departure_cities 4, destination_links 8, destination_rules 1, hotels 49, rooms 125, availability 2,500.

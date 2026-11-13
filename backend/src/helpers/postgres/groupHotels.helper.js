@@ -106,4 +106,11 @@ async function hotelStatusByGroups(groupIds, trx = db) {
   return out;
 }
 
-module.exports = { findHotel, hotelStatusByGroups, listRoomStays, findRoomStay, listSaved, insertSaved, deleteSaved, findBooking, insertBooking };
+/** After a member leaves or is removed: same rooms and total, new member count and share. Returns the row. */
+async function updateBookingSplit(groupId, membersCount, perMemberInr, trx = db) {
+  const [row] = await trx('group_bookings').where({ group_id: groupId })
+    .update({ members_count: membersCount, per_member_inr: perMemberInr }).returning('*');
+  return row;
+}
+
+module.exports = { findHotel, hotelStatusByGroups, listRoomStays, findRoomStay, listSaved, insertSaved, deleteSaved, findBooking, insertBooking, updateBookingSplit };

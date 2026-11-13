@@ -36,6 +36,13 @@ describe('joinRequests.service pure rules', () => {
   it('requestBlocker: a removed member cannot ask again', () => {
     assert.equal(service.requestBlocker(g01(), 'T-002', request({ status: 'REMOVED' })), 'REMOVED');
   });
+  it('requestBlocker: cancelled, left and closed requests can be sent again (unless the group is full)', () => {
+    for (const status of ['CANCELLED', 'LEFT', 'CLOSED']) {
+      assert.equal(service.requestBlocker(g01(), 'T-002', request({ status })), null, status);
+      assert.equal(service.requestBlocker(g01({ max_size: 1 }), 'T-002', request({ status })), 'FULL', status);
+    }
+    assert.equal(service.isReopenable('PENDING'), false);
+  });
   it('requestBlocker: a full group still reports PENDING for an existing request', () => {
     assert.equal(service.requestBlocker(g01({ max_size: 1 }), 'T-002', request()), 'PENDING');
   });
@@ -53,7 +60,7 @@ describe('joinRequests.service.createRequest', () => {
     mock.method(joinRequestsHelper, 'findByGroupAndSeeker', async () => undefined);
     const insert = mock.method(joinRequestsHelper, 'insert', async () => request());
     const created = await service.createRequest('T-002', 'g-01');
-    assert.deepEqual(insert.mock.calls[0].arguments[0], { group_id: 'G-01', seeker_id: 'T-002' });
+    assert.deepEqual(insert.mock.calls[0].arguments[0], { group_id: 'G-01', seeker_id: 'T-002', message: null });
     assert.equal(created.status, 'PENDING');
   });
 
@@ -173,5 +180,80 @@ describe('joinRequests.service.reject', () => {
     mock.method(joinRequestsHelper, 'findById', async () => request());
     mock.method(groupsHelper, 'findById', async () => g01());
     await assert.rejects(service.reject('T-003', 'R-1001'), is(403));
+  });
+});
+
+describe('joinRequests.service follow-ups (note, cancel, re-open, auto-close)', () => {
+  afterEach(() => mock.restoreAll());
+
+  it('saves a trimmed note; blank becomes null; over 500 chars is 400', async () => {
+    mock.method(groupsHelper, 'findById', async () => g01());
+    mock.method(joinRequestsHelper, 'findByGroupAndSeeker', async () => undefined);
+    const insert = mock.method(joinRequestsHelper, 'insert', async (row) => request({ message: row.message }));
+    const created = await service.createRequest('T-002', 'G-01', { message: '  I love temples too  ' });
+    assert.equal(insert.mock.calls[0].arguments[0].message, 'I love temples too');
+    assert.equal(created.message, 'I love temples too');
+    await service.createRequest('T-002', 'G-01', { message: '   ' });
+    assert.equal(insert.mock.calls[1].arguments[0].message, null);
+    await assert.rejects(service.createRequest('T-002', 'G-01', { message: 'x'.repeat(501) }), is(400));
+    await assert.rejects(service.createRequest('T-002', 'G-01', { seeker_id: 'T-009' }), is(400));
+  });
+
+  it('re-opens a CANCELLED request instead of inserting a duplicate', async () => {
+    mock.method(groupsHelper, 'findById', async () => g01());
+    mock.method(joinRequestsHelper, 'findByGroupAndSeeker', async () => request({ status: 'CANCELLED' }));
+    const insert = mock.method(joinRequestsHelper, 'insert', async () => request());
+    const reopen = mock.method(joinRequestsHelper, 'reopen', async (_id, message) => request({ message }));
+    const again = await service.createRequest('T-002', 'G-01', { message: 'Back again' });
+    assert.deepEqual(reopen.mock.calls[0].arguments, ['R-1001', 'Back again']);
+    assert.equal(insert.mock.callCount(), 0);
+    assert.equal(again.status, 'PENDING');
+  });
+
+  it('cancel: own PENDING request only', async () => {
+    fakeTransaction();
+    mock.method(joinRequestsHelper, 'findById', async () => request());
+    mock.method(joinRequestsHelper, 'findByIdForUpdate', async () => request());
+    const update = mock.method(joinRequestsHelper, 'updateStatus', async (_id, status) => request({ status, decided_at: 'now' }));
+    assert.equal((await service.cancel('T-002', 'r-1001')).status, 'CANCELLED');
+    assert.deepEqual(update.mock.calls[0].arguments, ['R-1001', 'CANCELLED', 'TRX']);
+    await assert.rejects(service.cancel('T-003', 'R-1001'), is(403));
+  });
+
+  it('cancel: 409 when already decided, 404 when unknown', async () => {
+    fakeTransaction();
+    mock.method(joinRequestsHelper, 'findById', async (id) => (id === 'R-1001' ? request({ status: 'APPROVED' }) : undefined));
+    mock.method(joinRequestsHelper, 'findByIdForUpdate', async () => request({ status: 'APPROVED' }));
+    await assert.rejects(service.cancel('T-002', 'R-1001'), is(409));
+    await assert.rejects(service.cancel('T-002', 'R-404'), is(404));
+  });
+
+  it('approve that fills the group closes the other pending requests', async () => {
+    fakeTransaction();
+    const almostFull = g01({ member_ids: ['T-001', 'T-003'] }); // max 3
+    mock.method(joinRequestsHelper, 'findById', async () => request());
+    mock.method(joinRequestsHelper, 'findByIdForUpdate', async () => request());
+    mock.method(groupsHelper, 'findById', async () => almostFull);
+    mock.method(groupsHelper, 'lockById', async () => almostFull);
+    mock.method(groupsHelper, 'addMember', async () => ['T-001', 'T-003', 'T-002']);
+    mock.method(joinRequestsHelper, 'updateStatus', async (_id, status) => request({ status, decided_at: 'now' }));
+    const close = mock.method(joinRequestsHelper, 'closePending', async () => ['R-1002', 'R-1003']);
+    const result = await service.approve('T-001', 'R-1001');
+    assert.deepEqual(close.mock.calls[0].arguments, ['G-01', 'R-1001', 'TRX']);
+    assert.deepEqual(result.closed_request_ids, ['R-1002', 'R-1003']);
+  });
+
+  it('approve that leaves room does not close anything', async () => {
+    fakeTransaction();
+    mock.method(joinRequestsHelper, 'findById', async () => request());
+    mock.method(joinRequestsHelper, 'findByIdForUpdate', async () => request());
+    mock.method(groupsHelper, 'findById', async () => g01());
+    mock.method(groupsHelper, 'lockById', async () => g01());
+    mock.method(groupsHelper, 'addMember', async () => ['T-001', 'T-002']);
+    mock.method(joinRequestsHelper, 'updateStatus', async (_id, status) => request({ status }));
+    const close = mock.method(joinRequestsHelper, 'closePending', async () => []);
+    const result = await service.approve('T-001', 'R-1001');
+    assert.equal(close.mock.callCount(), 0);
+    assert.deepEqual(result.closed_request_ids, []);
   });
 });

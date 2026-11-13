@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BellRing, Check, CheckCircle2, Clock3, Heart, Loader2, MapPin, ShieldCheck, Sparkles, UserMinus, UserRound, UsersRound, X, XCircle } from 'lucide-react';
+import { BellRing, Check, CheckCircle2, Clock3, Heart, Loader2, MapPin, LogOut, MessageSquareQuote, ShieldCheck, Sparkles, Undo2, UserMinus, UserRound, UsersRound, X, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ApiError } from '@/lib/api';
 import { Dialog } from '@/components/ui/dialog';
 import { InterestTags } from '@/components/shared/common';
 import { useAsync } from '@/lib/useAsync';
@@ -11,10 +12,10 @@ import type { GroupDetails } from '@/types/group';
 import type { IncomingJoinRequest, JoinRequestStatus, OwnerJoinRequest } from '@/types/joinRequest';
 import type { Traveller } from '@/types/traveller';
 import type { ProfileLinkState } from '@/features/profile/TravellerProfilePage';
-import { requestStatusLabel, seekerAction, timeAgo } from './joinRequests';
+import { MAX_REQUEST_MESSAGE, requestStatusLabel, seekerAction, timeAgo } from './joinRequests';
 import { stagger } from './media';
 
-const STATUS_ICON = { PENDING: Clock3, APPROVED: CheckCircle2, REJECTED: XCircle, REMOVED: UserMinus } as const;
+const STATUS_ICON = { PENDING: Clock3, APPROVED: CheckCircle2, REJECTED: XCircle, REMOVED: UserMinus, CANCELLED: Undo2, LEFT: LogOut, CLOSED: UsersRound } as const;
 
 export function RequestStatusPill({ status }: { status: JoinRequestStatus }) {
   const Icon = STATUS_ICON[status];
@@ -30,14 +31,29 @@ const prefLabel = (t: Pick<Traveller, 'gender_preference'>) => (t.gender_prefere
 
 /* ---------- seeker: "Interested" in the details sidebar ---------- */
 
+/** The seeker's optional note, shown quoted to the organiser. */
+export function RequestNote({ message, compact = false }: { message: string | null; compact?: boolean }) {
+  if (!message) return null;
+  return (
+    <blockquote className={`gp-note ${compact ? 'is-compact' : ''}`}>
+      <MessageSquareQuote size={14} aria-hidden="true" />
+      <span><span className="sr-only">Note: </span>{message}</span>
+    </blockquote>
+  );
+}
+
 export function InterestPanel({ group }: { group: GroupDetails }) {
   const me = useTravellerStore((s) => s.travellerId);
   const inGroup = !!me && group.member_ids.includes(me);
   const mine = useAsync(() => (me && !inGroup ? joinRequestService.listMine() : Promise.resolve([])), `my-requests:${me ?? '-'}:${group.group_id}:${inGroup}`);
-  const [sent, setSent] = useState<JoinRequestStatus | null>(null);
+  const [local, setLocal] = useState<{ request_id: string; status: JoinRequestStatus } | null>(null);
+  const [composing, setComposing] = useState(false);
+  const [note, setNote] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
-  const existing = sent ? { status: sent } : mine.data?.find((r) => r.group_id === group.group_id);
+  const [sentNow, setSentNow] = useState(false);
+  const fromServer = mine.data?.find((r) => r.group_id === group.group_id);
+  const existing = local ?? fromServer;
   const action = seekerAction(group, me, existing);
 
   async function send() {
@@ -45,11 +61,30 @@ export function InterestPanel({ group }: { group: GroupDetails }) {
     setPending(true);
     setError('');
     try {
-      await joinRequestService.sendInterest(group.group_id);
-      setSent('PENDING');
+      const created = await joinRequestService.sendInterest(group.group_id, note);
+      setLocal({ request_id: created.request_id, status: 'PENDING' });
+      setComposing(false);
+      setNote('');
+      setSentNow(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not send your request. Please try again.');
+      setError(err instanceof ApiError && err.fields.message ? err.fields.message : err instanceof Error ? err.message : 'Could not send your request. Please try again.');
       mine.retry(); // the server state may have changed (e.g. the group filled up)
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function cancelRequest() {
+    if (!existing || !('request_id' in existing) || !useTravellerStore.getState().ensureValidSession()) return;
+    setPending(true);
+    setError('');
+    try {
+      await joinRequestService.cancel(existing.request_id);
+      setLocal({ request_id: existing.request_id, status: 'CANCELLED' });
+      setSentNow(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not cancel your request. Please try again.');
+      mine.retry();
     } finally {
       setPending(false);
     }
@@ -61,21 +96,44 @@ export function InterestPanel({ group }: { group: GroupDetails }) {
       {action.kind === 'SIGN_IN' ? (
         <Button asChild size="lg"><Link to="/login"><Heart size={16} aria-hidden="true" />{action.label}</Link></Button>
       ) : (
-        <Button size="lg" onClick={send} disabled={action.disabled || pending || (mine.loading && !sent)} aria-describedby="interest-reason">
-          {pending ? <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-            : action.kind === 'PENDING' ? <Clock3 size={16} aria-hidden="true" />
+        <Button size="lg" onClick={() => { setError(''); setComposing(true); }} disabled={action.disabled || pending || (mine.loading && !local)} aria-describedby="interest-reason">
+          {action.kind === 'PENDING' ? <Clock3 size={16} aria-hidden="true" />
             : action.kind === 'MEMBER' ? <CheckCircle2 size={16} aria-hidden="true" />
             : action.kind === 'REJECTED' ? <XCircle size={16} aria-hidden="true" />
             : action.kind === 'REMOVED' ? <UserMinus size={16} aria-hidden="true" />
             : <Heart size={16} aria-hidden="true" />}
-          {pending ? 'Sending request…' : action.label}
+          {action.label}
         </Button>
       )}
-      <p id="interest-reason" className="field-hint" role={sent ? 'status' : undefined}>
-        {sent === 'PENDING' ? <><b>Request sent!</b> {action.reason}</> : action.reason}
+      <p id="interest-reason" className="field-hint" role={sentNow ? 'status' : undefined}>
+        {sentNow && action.kind === 'PENDING' ? <><b>Request sent!</b> {action.reason}</> : action.reason}
       </p>
+      {action.kind === 'PENDING' ? (
+        <>
+          <RequestNote message={fromServer?.status === 'PENDING' ? fromServer.message : null} compact />
+          <Button variant="outline" size="sm" disabled={pending} onClick={cancelRequest}>
+            {pending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Undo2 size={14} aria-hidden="true" />}Cancel request
+          </Button>
+        </>
+      ) : null}
       {error ? <p role="alert" className="field-error">{error}</p> : null}
       {mine.error ? <p role="alert" className="field-error">Couldn’t check your request status. <button type="button" className="text-link" onClick={mine.retry}>Retry</button></p> : null}
+
+      <Dialog open={composing} onOpenChange={(open) => { if (!open && !pending) setComposing(false); }}
+        title={`Ask to join ${group.name}`}
+        description={`${group.owner.name} will see your profile and can approve or decline. A short note helps them decide.`}>
+        <label className="gp-note-label" htmlFor="request-note">Note to the organiser <span className="text-muted-foreground">(optional)</span></label>
+        <textarea id="request-note" className="gp-note-input" rows={3} maxLength={MAX_REQUEST_MESSAGE} value={note} onChange={(e) => setNote(e.target.value)}
+          placeholder="Hi! I love temples and street food too, and I’m flexible on dates." />
+        <small className="text-muted-foreground">{note.length}/{MAX_REQUEST_MESSAGE}</small>
+        {error ? <p role="alert" className="field-error mt-2">{error}</p> : null}
+        <div className="flex flex-wrap gap-3 mt-4">
+          <Button variant="outline" disabled={pending} onClick={() => setComposing(false)}>Cancel</Button>
+          <Button disabled={pending} onClick={send}>
+            {pending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Heart size={14} aria-hidden="true" />}Send request
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }
@@ -110,6 +168,7 @@ function SeekerCard({ request, index, spotsLeft, busy, groupName, onApprove, onR
           <span className="gp-shared"><Sparkles size={14} aria-hidden="true" />{request.shared_interests.length} shared interest{request.shared_interests.length === 1 ? '' : 's'}</span>
         ) : null}
       </div>
+      <RequestNote message={request.message} />
       {seeker.interests.length ? <InterestTags values={seeker.interests} highlight={request.shared_interests} /> : <p className="text-muted-foreground text-sm">No interests listed</p>}
       {isPending ? (
         <div className="gp-request-actions">
@@ -145,8 +204,14 @@ export function OwnerRequestsSection({ group, onMembersChanged }: { group: Group
     setMessage(null);
     try {
       const result = await joinRequestService[action](request.request_id);
-      setDecided((d) => ({ ...d, [request.request_id]: result.status }));
-      setMessage({ kind: 'ok', text: action === 'approve' ? `${request.seeker.name} joined your group.` : `You declined ${request.seeker.name}’s request.` });
+      const closed = result.closed_request_ids ?? [];
+      setDecided((d) => ({ ...d, [request.request_id]: result.status, ...Object.fromEntries(closed.map((id) => [id, 'CLOSED' as const])) }));
+      setMessage({
+        kind: 'ok',
+        text: action === 'reject' ? `You declined ${request.seeker.name}’s request.`
+          : closed.length ? `${request.seeker.name} joined your group. The group is now full, so ${closed.length} other pending request${closed.length === 1 ? ' was' : 's were'} closed.`
+          : `${request.seeker.name} joined your group.`,
+      });
       if (action === 'approve') await onMembersChanged();
     } catch (err) {
       setMessage({ kind: 'error', text: err instanceof Error ? err.message : 'Could not save your decision. Please try again.' });
@@ -224,6 +289,7 @@ export function IncomingRequestsPanel({ requests }: { requests: IncomingJoinRequ
                 {r.seeker.age ?? '–'} · {genderLabel(r.seeker)} · {r.seeker.home_city}
                 {r.shared_interests.length ? ` · ${r.shared_interests.length} shared interest${r.shared_interests.length === 1 ? '' : 's'}` : ''} · {timeAgo(r.created_at)}
               </small>
+              <RequestNote message={r.message} compact />
             </div>
             <Button asChild size="sm" variant="outline"><Link to={`/groups/${r.group.group_id}#join-requests`} aria-label={`Review ${r.seeker.name}’s request for ${r.group.name}`}>Review</Link></Button>
           </li>

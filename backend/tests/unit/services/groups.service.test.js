@@ -188,25 +188,44 @@ describe('groups.service reads', () => {
   });
 });
 
-describe('groups.service.removeMember', () => {
+describe('groups.service.removeMember / leaveGroup', () => {
   afterEach(() => mock.restoreAll());
   const twoMembers = () => row({ member_ids: ['T-001', 'T-002'] });
 
-  function arrange(group = twoMembers()) {
+  function arrange({ group = twoMembers(), booking } = {}) {
     mock.method(transactionHelper, 'withTransaction', async (work) => work('TRX'));
     mock.method(groupsHelper, 'findById', async () => group);
+    mock.method(groupsHelper, 'lockById', async () => group);
     const remove = mock.method(groupsHelper, 'removeMember', async (_g, id) => (group.member_ids.includes(id) ? group.member_ids.filter((m) => m !== id) : undefined));
-    const mark = mock.method(joinRequestsHelper, 'markRemoved', async () => ({ status: 'REMOVED' }));
-    return { remove, mark };
+    const mark = mock.method(joinRequestsHelper, 'markMembershipEnded', async () => ({}));
+    mock.method(groupHotelsHelper, 'findBooking', async () => booking);
+    const split = mock.method(groupHotelsHelper, 'updateBookingSplit', async () => ({}));
+    return { remove, mark, split };
   }
 
-  it('owner removes a member: member_ids shrink and the request is marked REMOVED in one transaction', async () => {
-    const { remove, mark } = arrange();
+  it('perMemberShare rounds to the nearest rupee and never divides by zero', () => {
+    assert.equal(service.perMemberShare(23800, 2), 11900);
+    assert.equal(service.perMemberShare(10000, 3), 3333);
+    assert.equal(service.perMemberShare(10001, 2), 5001);
+    assert.equal(service.perMemberShare(5000, 0), 5000);
+  });
+
+  it('owner removes a member: member_ids shrink and the request is REMOVED in one transaction', async () => {
+    const { remove, mark, split } = arrange();
     const group = await service.removeMember('T-001', 'g-1001', 't-002');
     assert.deepEqual(remove.mock.calls[0].arguments, ['G-1001', 'T-002', 'TRX']);
-    assert.deepEqual(mark.mock.calls[0].arguments, ['G-1001', 'T-002', 'TRX']);
+    assert.deepEqual(mark.mock.calls[0].arguments, ['G-1001', 'T-002', 'REMOVED', 'TRX']);
     assert.deepEqual(group.member_ids, ['T-001']);
     assert.equal(group.spots_left, 2);
+    assert.equal(group.booking_update, null);
+    assert.equal(split.mock.callCount(), 0);
+  });
+
+  it('after booking: same total re-split over the remaining members', async () => {
+    const { split } = arrange({ booking: { booking_id: 'BK-1001', total_inr: 23800, per_member_inr: 11900, members_count: 2 } });
+    const group = await service.removeMember('T-001', 'G-1001', 'T-002');
+    assert.deepEqual(split.mock.calls[0].arguments, ['G-1001', 1, 23800, 'TRX']);
+    assert.deepEqual(group.booking_update, { booking_id: 'BK-1001', total_inr: 23800, members_count: 1, per_member_before: 11900, per_member_after: 23800 });
   });
 
   it('403 for a non-owner, 400 for removing the owner, 404 for a non-member or unknown group', async () => {
@@ -224,5 +243,20 @@ describe('groups.service.removeMember', () => {
     const { mark } = arrange();
     await assert.rejects(service.removeMember('T-001', 'G-1001', 'T-009'));
     assert.equal(mark.mock.callCount(), 0);
+  });
+
+  it('a member leaves: LEFT is recorded and the booking re-split', async () => {
+    const { mark, split } = arrange({ group: row({ member_ids: ['T-001', 'T-002', 'T-003'] }), booking: { booking_id: 'BK-1', total_inr: 30000, per_member_inr: 10000, members_count: 3 } });
+    const group = await service.leaveGroup('T-003', 'G-1001');
+    assert.deepEqual(mark.mock.calls[0].arguments, ['G-1001', 'T-003', 'LEFT', 'TRX']);
+    assert.deepEqual(split.mock.calls[0].arguments, ['G-1001', 2, 15000, 'TRX']);
+    assert.deepEqual(group.member_ids, ['T-001', 'T-002']);
+  });
+
+  it('the owner cannot leave (400); a non-member gets 404', async () => {
+    const { remove } = arrange();
+    await assert.rejects(service.leaveGroup('T-001', 'G-1001'), (e) => e.status === 400);
+    await assert.rejects(service.leaveGroup('T-009', 'G-1001'), (e) => e.status === 404);
+    assert.equal(remove.mock.callCount(), 0);
   });
 });

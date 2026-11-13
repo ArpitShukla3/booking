@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { requestStatusLabel, seekerAction } from './joinRequests';
+import { perMemberShare, REOPENABLE, requestStatusLabel, seekerAction, splitPreview } from './joinRequests';
 
-type Status = 'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED';
+type Status = 'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED' | 'CANCELLED' | 'LEFT' | 'CLOSED';
 type Kind = ReturnType<typeof seekerAction>['kind'];
 const g01 = { owner: { traveller_id: 'T-001' }, member_ids: ['T-001'], spots_left: 2 };
 const req = (status: Status) => ({ status });
@@ -43,5 +43,36 @@ describe('requestStatusLabel', () => {
     expect(requestStatusLabel('APPROVED')).toBe('Approved');
     expect(requestStatusLabel('REJECTED')).toBe('Declined');
     expect(requestStatusLabel('REMOVED')).toBe('Removed');
+  });
+});
+
+describe('re-opening ended requests', () => {
+  it.each(['CANCELLED', 'LEFT', 'CLOSED'] as const)('%s → "Ask to join again" when there is a spot', (status) => {
+    const action = seekerAction(g01, 'T-002', { status });
+    expect(action).toMatchObject({ kind: 'CAN_REQUEST', label: 'Ask to join again', disabled: false });
+  });
+  it('closed request on a still-full group explains why', () => {
+    const action = seekerAction({ ...g01, spots_left: 0 }, 'T-002', { status: 'CLOSED' });
+    expect(action.kind).toBe('FULL');
+    expect(action.reason).toMatch(/filled up/);
+  });
+  it('REOPENABLE matches the backend list and labels are readable', () => {
+    expect(REOPENABLE).toEqual(['CANCELLED', 'LEFT', 'CLOSED']);
+    expect(requestStatusLabel('CANCELLED')).toBe('Cancelled');
+    expect(requestStatusLabel('LEFT')).toBe('Left');
+    expect(requestStatusLabel('CLOSED')).toBe('Group filled');
+  });
+});
+
+describe('booking cost split after removal / leaving', () => {
+  it('keeps the total and re-splits with nearest-rupee rounding', () => {
+    expect(perMemberShare(23800, 1)).toBe(23800);
+    expect(perMemberShare(10000, 3)).toBe(3333);
+    expect(perMemberShare(5000, 0)).toBe(5000);
+    expect(splitPreview({ total_inr: 30000, per_member_inr: 10000, members_count: 3 }, 2)).toEqual({ total: 30000, before: 10000, after: 15000, membersAfter: 2 });
+  });
+  it('no booking → no preview', () => {
+    expect(splitPreview(null, 2)).toBeNull();
+    expect(splitPreview(undefined, 2)).toBeNull();
   });
 });

@@ -9,4 +9,5 @@ router.get('/mine', controller.listMine);
 router.get('/incoming', controller.listIncoming);
 router.post('/:requestId/approve', controller.approve);
 router.post('/:requestId/reject', controller.reject);
+router.post('/:requestId/cancel', controller.cancel);
 module.exports = router;

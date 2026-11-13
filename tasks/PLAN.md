@@ -126,7 +126,10 @@ Errors from every endpoint: `{ "error": { "message": string, "fields"?: { [field
 | GET | `/api/groups/:id/join-requests` 🔒 | M5 | owner only |
 | POST | `/api/join-requests/:id/approve` 🔒 | M5 | owner only; transaction; 409 if full |
 | POST | `/api/join-requests/:id/reject` 🔒 | M5 | owner only |
-| DELETE | `/api/groups/:id/members/:travellerId` 🔒 | M5 | owner only; removes a member, their request becomes `REMOVED` (added 2026-11-13) |
+| DELETE | `/api/groups/:id/members/:travellerId` 🔒 | M5 | owner only; removes a member, their request becomes `REMOVED`; re-splits a booking (`booking_update`) |
+| POST | `/api/groups/:id/leave` 🔒 | M5 | a member (not the owner) leaves → `LEFT`; re-splits a booking |
+| POST | `/api/join-requests/:id/cancel` 🔒 | M5 | the seeker cancels their own PENDING request → `CANCELLED` |
+| — | `POST /api/groups/:id/join-requests` body | M5 | optional `{ message }` (≤ 500); re-opens a CANCELLED / LEFT / CLOSED request; approve returns `closed_request_ids` when the group fills |
 | GET | `/api/join-requests/mine` 🔒 | M5 | the seeker's requests + status |
 | GET | `/api/join-requests/incoming` 🔒 | M5 | owner notifications: pending requests on owned groups (added in M5) |
 | — | (none) | X1 | traveller profile reuses `GET /api/travellers/:id`; reviews/ratings/votes are frontend mock data, no endpoint yet |

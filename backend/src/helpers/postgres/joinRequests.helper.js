@@ -1,7 +1,7 @@
 // SQL for the `join_requests` table (Track B, M5). Dates come back as YYYY-MM-DD strings.
 const db = require('./client');
 
-const COLUMNS = ['request_id', 'group_id', 'seeker_id', 'status', 'created_at', 'decided_at'];
+const COLUMNS = ['request_id', 'group_id', 'seeker_id', 'status', 'message', 'created_at', 'decided_at'];
 const SEEKER_COLUMNS = ['t.name', 't.age', 't.gender', 't.home_city', 't.home_airport', 't.interests', 't.gender_preference'];
 const GROUP_COLUMNS = [
   'g.name as group_name', 'g.city as group_city', 'd.country_name as group_country_name',
@@ -74,19 +74,37 @@ async function updateStatus(requestId, status, trx = db) {
 }
 
 /**
- * Marks (group, traveller) as REMOVED. Seeded members have no request row, so one is created.
- * Returns the row.
+ * Records why a member is no longer in the group (REMOVED or LEFT). Seeded members have no
+ * request row, so one is created. Returns the row.
  */
-async function markRemoved(groupId, travellerId, trx = db) {
+async function markMembershipEnded(groupId, travellerId, status, trx = db) {
   const [row] = await trx('join_requests')
-    .insert({ group_id: groupId, seeker_id: travellerId, status: 'REMOVED', decided_at: trx.fn.now() })
+    .insert({ group_id: groupId, seeker_id: travellerId, status, decided_at: trx.fn.now() })
     .onConflict(['group_id', 'seeker_id'])
     .merge(['status', 'decided_at'])
     .returning(COLUMNS);
   return row;
 }
 
+/** Turns a CANCELLED / LEFT / CLOSED request back into a fresh PENDING one. Returns the row. */
+async function reopen(requestId, message, trx = db) {
+  const [row] = await trx('join_requests').where({ request_id: requestId })
+    .update({ status: 'PENDING', message, created_at: trx.fn.now(), decided_at: null })
+    .returning(COLUMNS);
+  return row;
+}
+
+/** Closes every other PENDING request of a group (it just filled up). Returns the closed request IDs. */
+async function closePending(groupId, exceptRequestId, trx = db) {
+  const rows = await trx('join_requests')
+    .where({ group_id: groupId, status: 'PENDING' })
+    .whereNot({ request_id: exceptRequestId })
+    .update({ status: 'CLOSED', decided_at: trx.fn.now() })
+    .returning('request_id');
+  return rows.map((r) => r.request_id);
+}
+
 module.exports = {
   insert, findById, findByIdForUpdate, findByGroupAndSeeker, listByGroup, listBySeeker,
-  listPendingForOwner, countPendingByGroups, updateStatus, markRemoved,
+  listPendingForOwner, countPendingByGroups, updateStatus, markMembershipEnded, reopen, closePending,
 };

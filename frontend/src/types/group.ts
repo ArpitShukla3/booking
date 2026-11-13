@@ -39,3 +39,14 @@ export interface CreateGroupInput {
   budget_inr: number;
   itinerary: string;
 }
+
+/** Booking cost after a member leaves or is removed: same total, new per-member share. */
+export interface BookingSplitChange {
+  booking_id: string;
+  total_inr: number;
+  members_count: number;
+  per_member_before: number;
+  per_member_after: number;
+}
+/** Result of removing a member or leaving the group. */
+export interface MembershipChange extends Group { booking_update: BookingSplitChange | null }

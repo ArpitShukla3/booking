@@ -3,12 +3,14 @@ import joinRequestsHelper = require('../helpers/postgres/joinRequests.helper');
 import travellersHelper = require('../helpers/postgres/travellers.helper');
 import transactionHelper = require('../helpers/postgres/transaction.helper');
 import HttpError = require('../utils/HttpError');
+import { parseInput } from '../validation/travellers.validation.ts';
+import { createRequestSchema } from '../validation/joinRequests.validation.ts';
 import groupsService = require('./groups.service.ts');
 import type { Knex } from 'knex';
 import type { GroupRow } from '../types/group.ts';
 import type {
   DecidedJoinRequest, GroupColumns, IncomingJoinRequest, JoinRequest, JoinRequestRow, MyJoinRequest,
-  OwnerJoinRequest, RequestBlocker, RequestGroup, SeekerColumns,
+  JoinRequestStatus, OwnerJoinRequest, RequestBlocker, RequestGroup, SeekerColumns,
 } from '../types/joinRequest.ts';
 import type { Traveller } from '../types/traveller.ts';
 
@@ -22,9 +24,15 @@ function requestBlocker(
 ): RequestBlocker | null {
   if (group.owner_id === seekerId) return 'OWNER';
   if (group.member_ids.includes(seekerId)) return 'MEMBER';
-  if (existing) return existing.status;
+  // Declined / removed / approved requests block for good; cancelled, left and closed ones can be re-opened.
+  if (existing && !isReopenable(existing.status)) return existing.status as RequestBlocker;
   if (group.member_ids.length >= group.max_size) return 'FULL';
   return null;
+}
+
+const REOPENABLE: JoinRequestStatus[] = ['CANCELLED', 'LEFT', 'CLOSED'];
+function isReopenable(status: JoinRequestStatus): boolean {
+  return REOPENABLE.includes(status);
 }
 
 const BLOCKER_MESSAGES: Record<RequestBlocker, string> = {
@@ -51,7 +59,7 @@ const normalizeId = (id: string) => String(id).trim().toUpperCase();
 
 function toRequestDto(row: JoinRequestRow): JoinRequest {
   const { request_id, group_id, seeker_id, status, created_at, decided_at } = row;
-  return { request_id, group_id, seeker_id, status, created_at, decided_at };
+  return { request_id, group_id, seeker_id, status, message: row.message ?? null, created_at, decided_at };
 }
 
 function toSeeker(row: JoinRequestRow & SeekerColumns): Traveller {
@@ -77,15 +85,29 @@ async function findGroupOr404(groupId: string): Promise<GroupRow> {
   return group;
 }
 
-/** Seeker clicks "Interested". */
-async function createRequest(seekerId: string, groupId: string): Promise<JoinRequest> {
+/** Seeker clicks "Interested", optionally with a note. Re-opens a cancelled / left / closed request. */
+async function createRequest(seekerId: string, groupId: string, body?: unknown): Promise<JoinRequest> {
+  const { message } = parseInput(createRequestSchema, body ?? {});
   const group = await findGroupOr404(groupId);
   const existing: JoinRequestRow | undefined = await joinRequestsHelper.findByGroupAndSeeker(group.group_id, seekerId);
   const blocker = requestBlocker(group, seekerId, existing);
   if (blocker) throw HttpError.conflict(BLOCKER_MESSAGES[blocker]);
-  const created: JoinRequestRow | undefined = await joinRequestsHelper.insert({ group_id: group.group_id, seeker_id: seekerId });
+  if (existing) return toRequestDto(await joinRequestsHelper.reopen(existing.request_id, message));
+  const created: JoinRequestRow | undefined = await joinRequestsHelper.insert({ group_id: group.group_id, seeker_id: seekerId, message });
   if (!created) throw HttpError.conflict(BLOCKER_MESSAGES.PENDING); // a parallel click got there first
   return toRequestDto(created);
+}
+
+/** Seeker withdraws their own PENDING request. They can send a new one later. */
+async function cancel(seekerId: string, requestId: string): Promise<JoinRequest> {
+  const request: JoinRequestRow | undefined = await joinRequestsHelper.findById(normalizeId(requestId));
+  if (!request) throw HttpError.notFound('Join request not found');
+  if (request.seeker_id !== seekerId) throw HttpError.forbidden('You can only cancel your own requests');
+  return inTransaction(async (trx) => {
+    const locked: JoinRequestRow | undefined = await joinRequestsHelper.findByIdForUpdate(request.request_id, trx);
+    assertPending(locked);
+    return toRequestDto(await joinRequestsHelper.updateStatus(locked.request_id, 'CANCELLED', trx));
+  });
 }
 
 /** Owner's view of one group's requests, with interests shared with the current members. */
@@ -125,6 +147,7 @@ async function findOwnedRequest(ownerId: string, requestId: string): Promise<Joi
 
 function assertPending(request: JoinRequestRow | undefined): asserts request is JoinRequestRow {
   if (!request) throw HttpError.notFound('Join request not found');
+  if (request.status === 'CLOSED') throw HttpError.conflict('This request was closed because the group is full.');
   if (request.status !== 'PENDING') throw HttpError.conflict(`This request was already ${request.status.toLowerCase()}.`);
 }
 
@@ -142,7 +165,11 @@ async function approve(ownerId: string, requestId: string): Promise<DecidedJoinR
     const memberIds: string[] | undefined = await groupsHelper.addMember(group.group_id, locked.seeker_id, trx);
     if (!memberIds) throw HttpError.conflict(FULL_MESSAGE);
     const updated: JoinRequestRow = await joinRequestsHelper.updateStatus(locked.request_id, 'APPROVED', trx);
-    return { ...toRequestDto(updated), group: groupsService.toGroupDto({ ...group, member_ids: memberIds }) };
+    // The group just filled up: nobody else can be approved, so close the other pending requests.
+    const closed: string[] = memberIds.length >= group.max_size
+      ? await joinRequestsHelper.closePending(group.group_id, locked.request_id, trx)
+      : [];
+    return { ...toRequestDto(updated), group: groupsService.toGroupDto({ ...group, member_ids: memberIds }), closed_request_ids: closed };
   });
 }
 
@@ -156,5 +183,5 @@ async function reject(ownerId: string, requestId: string): Promise<DecidedJoinRe
 }
 
 // Exported as one object (not ES named exports) so unit tests can mock.method() it.
-const joinRequestsService = { requestBlocker, sharedInterests, createRequest, listForGroup, listIncoming, listMine, approve, reject };
+const joinRequestsService = { requestBlocker, isReopenable, sharedInterests, createRequest, cancel, listForGroup, listIncoming, listMine, approve, reject };
 export = joinRequestsService;

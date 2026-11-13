@@ -32,6 +32,8 @@ test('Scenario B: Priya is interested → Sarah is notified → approves → gro
   await priya.goto(`/groups/${groupId}`);
   await expect(priya.getByRole('heading', { level: 1, name })).toBeVisible();
   await priya.getByRole('button', { name: 'Interested' }).click();
+  await priya.getByRole('dialog').getByLabel(/Note to the organiser/).fill('Temples at sunrise, count me in!');
+  await priya.getByRole('dialog').getByRole('button', { name: 'Send request' }).click();
   await expect(priya.getByText('Request sent!')).toBeVisible();
   await expect(priya.getByRole('button', { name: 'Request pending' })).toBeDisabled();
   await priya.reload();

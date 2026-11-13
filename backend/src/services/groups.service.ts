@@ -8,7 +8,8 @@ import HttpError = require('../utils/HttpError');
 import { parseInput } from '../validation/travellers.validation.ts';
 import { createGroupSchema } from '../validation/groups.validation.ts';
 import type { Knex } from 'knex';
-import type { BookingSummary, Group, GroupDetails, GroupRow, GroupStage, HotelStatus, MyGroup } from '../types/group.ts';
+import type { BookingSplitChange, BookingSummary, Group, GroupDetails, GroupRow, GroupStage, HotelStatus, MembershipChange, MyGroup } from '../types/group.ts';
+import type { BookingRow } from '../types/groupHotels.ts';
 import type { Traveller } from '../types/traveller.ts';
 
 /* ---------- pure rules (no I/O) ---------- */
@@ -105,21 +106,51 @@ async function listMyGroups(travellerId: string): Promise<MyGroup[]> {
   }));
 }
 
+/** A booking's per-member share after the member count changes (same rounding as M6 pricing). */
+function perMemberShare(totalInr: number, members: number): number {
+  return Math.round(totalInr / Math.max(1, members));
+}
+
 /**
- * Owner removes a member (never themselves). In one transaction: take them out of member_ids
- * and mark their join request REMOVED, so they can't ask to join again.
+ * Takes a traveller out of the group in one transaction: lock the group, remove them from
+ * member_ids, record why (REMOVED / LEFT) on their join request, and if the group already booked
+ * its hotel, re-split the same total over the members who are left.
  */
-async function removeMember(ownerId: string, groupId: string, memberId: string): Promise<Group> {
+async function endMembership(groupId: string, travellerId: string, status: 'REMOVED' | 'LEFT'): Promise<MembershipChange> {
+  return transactionHelper.withTransaction(async (trx: Knex.Transaction) => {
+    const group: GroupRow = await groupsHelper.lockById(groupId, trx);
+    const memberIds: string[] | undefined = await groupsHelper.removeMember(group.group_id, travellerId, trx);
+    if (!memberIds) throw HttpError.notFound('This traveller is not a member of the group');
+    await joinRequestsHelper.markMembershipEnded(group.group_id, travellerId, status, trx);
+    let bookingUpdate: BookingSplitChange | null = null;
+    const booking: BookingRow | undefined = await groupHotelsHelper.findBooking(group.group_id, trx);
+    if (booking) {
+      const perMemberAfter = perMemberShare(booking.total_inr, memberIds.length);
+      await groupHotelsHelper.updateBookingSplit(group.group_id, memberIds.length, perMemberAfter, trx);
+      bookingUpdate = {
+        booking_id: booking.booking_id, total_inr: booking.total_inr, members_count: memberIds.length,
+        per_member_before: booking.per_member_inr, per_member_after: perMemberAfter,
+      };
+    }
+    return { ...toGroupDto({ ...group, member_ids: memberIds }), booking_update: bookingUpdate };
+  }) as unknown as Promise<MembershipChange>;
+}
+
+/** Owner removes a member (never themselves). The member can't ask to join again (REMOVED). */
+async function removeMember(ownerId: string, groupId: string, memberId: string): Promise<MembershipChange> {
   const group = await getGroupRowOr404(groupId);
   const travellerId = String(memberId).trim().toUpperCase();
   if (group.owner_id !== ownerId) throw HttpError.forbidden('Only the group organiser can remove members');
   if (travellerId === group.owner_id) throw HttpError.badRequest('The organiser can’t be removed from their own group');
-  return transactionHelper.withTransaction(async (trx: Knex.Transaction) => {
-    const memberIds: string[] | undefined = await groupsHelper.removeMember(group.group_id, travellerId, trx);
-    if (!memberIds) throw HttpError.notFound('This traveller is not a member of the group');
-    await joinRequestsHelper.markRemoved(group.group_id, travellerId, trx);
-    return toGroupDto({ ...group, member_ids: memberIds });
-  }) as unknown as Promise<Group>;
+  return endMembership(group.group_id, travellerId, 'REMOVED');
+}
+
+/** A member leaves on their own (the organiser can't). They may ask to join again later (LEFT). */
+async function leaveGroup(travellerId: string, groupId: string): Promise<MembershipChange> {
+  const group = await getGroupRowOr404(groupId);
+  if (group.owner_id === travellerId) throw HttpError.badRequest('The organiser can’t leave their own group');
+  if (!group.member_ids.includes(travellerId)) throw HttpError.notFound('You are not a member of this group');
+  return endMembership(group.group_id, travellerId, 'LEFT');
 }
 
 async function getGroupRowOr404(groupId: string): Promise<GroupRow> {
@@ -129,5 +160,5 @@ async function getGroupRowOr404(groupId: string): Promise<GroupRow> {
 }
 
 // Exported as one object (not ES named exports) so unit tests can mock.method() it.
-const groupsService = { nightsBetween, stageOf, toGroupDto, createGroup, getGroup, listMyGroups, removeMember };
+const groupsService = { nightsBetween, stageOf, toGroupDto, perMemberShare, createGroup, getGroup, listMyGroups, removeMember, leaveGroup };
 export = groupsService;
