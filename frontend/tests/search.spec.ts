@@ -18,9 +18,14 @@ async function fillPriyaSearch(page: Page) {
   await page.getByLabel('Check-out').fill('2027-04-16');
   await page.getByLabel('Home city').selectOption('Mumbai');
   await page.getByLabel('Budget per person (INR)').fill('62000');
-  for (const label of ['Temples', 'Street food', 'Adventure']) {
-    const box = page.getByRole('checkbox', { name: new RegExp(label, 'i') }).first();
-    if (!(await box.isChecked())) await box.check();
+  // Exactly Priya's 3 interests: the form may be pre-filled from an earlier saved search.
+  const wanted = [/^Temples/i, /^Street food/i, /^Adventure/i];
+  const boxes = page.getByRole('group', { name: 'Interests' }).getByRole('checkbox');
+  for (const box of await boxes.all()) {
+    const name = (await box.getAttribute('id'))?.replace('interest-', '') ?? '';
+    const label = (await page.locator(`label[for="interest-${name}"]`).textContent()) ?? '';
+    const want = wanted.some((re) => re.test(label.trim()));
+    if (want !== (await box.isChecked())) await box.click();
   }
   await page.getByLabel('Gender preference').selectOption('SAME_GENDER');
 }

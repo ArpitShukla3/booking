@@ -36,16 +36,16 @@ Also exclude groups the seeker already **owns or belongs to**.
 - Every match card opens the **Group Details page** (`/groups/:groupId`, built by Track B). The "Interested" button lives there.
 
 ## Acceptance criteria
-- [ ] Priya's search returns **G-01 Kyoto Spring Temples** (owner Sarah, 5 shared nights, ₹2,000 difference, 2 shared interests, 1/3 members).
-- [ ] Boundary tests pass:
+- [x] Priya's search returns **G-01 Kyoto Spring Temples** (owner Sarah, 5 shared nights, ₹2,000 difference, 2 shared interests, 1/3 members).
+- [x] Boundary tests pass:
   - 1 shared night → no match; 2 → match
   - ₹60,000 vs ₹84,000 → match; ₹60,000 vs ₹85,000 → no match
   - 1 shared interest with the owner → no match
   - A male seeker against a SAME_GENDER female owner → no match. A female seeker with SAME_GENDER against a male owner with ANY → no match.
   - A full group (members == max_size) → no match
   - Kyoto vs Osaka → no match
-- [ ] The matching function has unit tests that cover each rule and the boundaries above.
-- [ ] Results are correct for any new traveller or search a judge enters.
+- [x] The matching function has unit tests that cover each rule and the boundaries above.
+- [x] Results are correct for any new traveller or search a judge enters.
 
 ## Data
 - Reads: `searches`, `groups`, `travellers` (owner), `destinations`
@@ -81,5 +81,11 @@ Tie-break: more shared interests → smaller budget difference → earlier check
 - Match cards show the group name, "City, Country", dates and nights, members (1/3), owner, budget, itinerary preview, shared-interest tags, score /100, and 6 reasons. Example: "5 shared nights", "Budgets 3.3% apart (₹2,000)", "2 shared interests: Temples and shrines, Street food and markets", "Same-gender preference met (both women)", "2 spots left". Cards link to `/groups/:groupId`.
 - No matches → suggestions (widen dates, add interests, adjust budget, other city) and a "Start your own group" link.
 - New M2 groups appear automatically (candidates are read from `groups`).
-- Tests **written, not yet run**: `backend/tests/unit/services/matching.service.test.js` covers every rule and every boundary listed above, the Priya × G-01 worked example, own-group exclusion and ranking ties. `backend/tests/integration/searches.api.test.js` covers Priya → G-01, a new M2 group appearing, own groups excluded, a judge-style random search where every returned match obeys all 6 rules, and sorting.
+- Tests: `backend/tests/unit/services/matching.service.test.js` covers every rule and every boundary listed above, the Priya × G-01 worked example, own-group exclusion and ranking ties. `backend/tests/integration/searches.api.test.js` covers Priya → G-01, a new M2 group appearing, own groups excluded, a judge-style random search where every returned match obeys all 6 rules, and sorting.
 
+
+### Test results (run 2026-11-13)
+- Backend: unit **99/99**, integration **43/43** (`npm run test:unit`, `npm run test:integration`).
+- Frontend: Vitest **51/51**. Playwright `tests/search.spec.ts` + `tests/groups.spec.ts` **12/12**, 3 runs in a row, against the real API and Postgres.
+- Playwright workers capped at 3 in `playwright.config.ts`. With more workers, the Vite dev server sometimes failed to serve lazy route chunks ("Failed to fetch dynamically imported module"), which made random tests flaky.
+- `tests/discovery.spec.ts` (7 tests) fails as expected: it tests the removed browser mock. Replace it with `tests/search.spec.ts` or delete it.

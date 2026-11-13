@@ -33,10 +33,10 @@ A seeker enters what trip they want. The search is saved, so the matches (M4) ca
 - Show the number of nights for the chosen dates (check-out day not counted).
 
 ## Acceptance criteria
-- [ ] Priya's search (Kyoto, 2027-04-09 → 2027-04-16, ₹62,000, TEMPLES/STREET_FOOD/ADVENTURE, SAME_GENDER) can be entered and saved.
-- [ ] A search with dates outside 1–20 April 2027, `check_out ≤ check_in`, or a city not in the data is rejected with a clear message.
-- [ ] A saved search still exists after a refresh and a backend restart.
-- [ ] The form accepts **any** valid combination. Nothing is hard-coded to the demo scenario.
+- [x] Priya's search (Kyoto, 2027-04-09 → 2027-04-16, ₹62,000, TEMPLES/STREET_FOOD/ADVENTURE, SAME_GENDER) can be entered and saved.
+- [x] A search with dates outside 1–20 April 2027, `check_out ≤ check_in`, or a city not in the data is rejected with a clear message.
+- [x] A saved search still exists after a refresh and a backend restart.
+- [x] The form accepts **any** valid combination. Nothing is hard-coded to the demo scenario.
 
 ## Data
 - New table **`searches`**: seeker (FK → travellers), home_city, city (FK → destinations), check_in, check_out, budget_inr, interests text[], gender, gender_preference, created_at
@@ -77,7 +77,13 @@ The Group Match tab used to run on a browser-side mock (local JSON, browser matc
 - `/group-match` needs a signed-in traveller. The search form (`features/group-match/forms.tsx`) loads destinations, interests and departure cities **from the API** and pre-fills from the profile or the latest saved search. Gender is shown read-only from the profile. Live nights count; backend field errors appear under each field.
 - Submit → `POST /api/searches` → URL `/group-match?search=S-1001&sort=score`. A refresh re-reads the saved search and its matches. The **Recent searches** panel re-opens earlier searches.
 - Frontend files: [U] `src/services/searchService.ts`, `src/types/search.ts`, `src/features/group-match/{searchSchema.ts,group-match.css,searchSchema.test.ts}`, `tests/search.spec.ts`. [M] `GroupDiscoveryPage.tsx`, `forms.tsx`, `GroupCard.tsx`, `App.tsx` (route protected; the old `/group-match/groups/:id` redirects to `/groups/:id`), `BookingHeader.tsx` (sample-traveller strip hidden on live pages).
-- Tests are **written, not yet run** (as requested): `backend/tests/unit/services/searches.service.test.js`, `backend/tests/integration/searches.api.test.js`, `frontend/src/features/group-match/searchSchema.test.ts`, `frontend/tests/search.spec.ts`. Compile checks only: backend `typecheck`, frontend `typecheck` / `lint` / `build` are clean.
+- Tests: `backend/tests/unit/services/searches.service.test.js`, `backend/tests/integration/searches.api.test.js`, `frontend/src/features/group-match/searchSchema.test.ts`, `frontend/tests/search.spec.ts`. Compile checks only: backend `typecheck`, frontend `typecheck` / `lint` / `build` are clean.
 - `frontend/tests/discovery.spec.ts` tests the old mock (sample-traveller switcher, URL-only searches, local "Interested"). It will fail now; replace it with `tests/search.spec.ts` or delete it.
 - The mock files (`services/mock/*`, `groupMatchService.ts`, `GroupDetailsPage.tsx`) are no longer used by the discovery page. The header's sample-traveller switcher still imports them. Delete them when M5 replaces "Interested".
 
+
+### Test results (run 2026-11-13)
+- Backend: unit **99/99**, integration **43/43** (`npm run test:unit`, `npm run test:integration`).
+- Frontend: Vitest **51/51**. Playwright `tests/search.spec.ts` + `tests/groups.spec.ts` **12/12**, 3 runs in a row, against the real API and Postgres.
+- Playwright workers capped at 3 in `playwright.config.ts`. With more workers, the Vite dev server sometimes failed to serve lazy route chunks ("Failed to fetch dynamically imported module"), which made random tests flaky.
+- `tests/discovery.spec.ts` (7 tests) fails as expected: it tests the removed browser mock. Replace it with `tests/search.spec.ts` or delete it.
