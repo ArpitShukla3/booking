@@ -90,6 +90,7 @@ To check that the backend works: `curl localhost:4000/api/health` should return 
 | Var | Default | Meaning |
 |---|---|---|
 | `PORT` | `4000` | API port |
+| `COMPOSE_PROJECT_NAME` | `booking` | Docker Compose resource namespace; keeps this project's volume separate from other projects named `backend`. |
 | `DB_HOST` / `DB_PORT` | `localhost` / `5432` | Postgres address. `DB_PORT` is also the host port in docker-compose. |
 | `DB_USER` / `DB_PASSWORD` / `DB_NAME` | `booking` / `booking` / `booking` | Credentials, shared by docker-compose and Knex |
 | `DATA_DIR` | `../hackathon-problem-3-group-travel-matcher` | Path to the data pack, relative to `backend/` |
@@ -109,7 +110,7 @@ To open a psql shell: `docker exec -it booking-postgres psql -U booking -d booki
 |---|---|---|
 | Runtime | Node.js, **CommonJS** (`require`) | Keep CommonJS: the Knex CLI and migrations use it |
 | HTTP | Express **5** | Errors thrown in async route handlers reach the error handler automatically |
-| DB | PostgreSQL 16 via `docker-compose.yml` | Container `booking-postgres`, volume `backend_pgdata` |
+| DB | PostgreSQL 16 via `docker-compose.yml` | Container `booking-postgres`, volume `booking_pgdata` when using the example `.env` |
 | Query builder / migrations | Knex 3 + `pg` | Migration history table: `knex_migrations` |
 | Config | `dotenv` | Loaded once in `src/config.js` |
 
