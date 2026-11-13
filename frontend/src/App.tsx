@@ -29,6 +29,7 @@ const MyGroupsPage = lazy(() => import("@/features/groups/MyGroupsPage"));
 const GroupPage = lazy(() => import("@/features/groups/GroupPage"));
 const MyRequestsPage = lazy(() => import("@/features/groups/MyRequestsPage"));
 const TravellerProfilePage = lazy(() => import("@/features/profile/TravellerProfilePage"));
+const GroupChatPage = lazy(() => import("@/features/chat/GroupChatPage"));
 const HotelDetailsPage = lazy(() => import("@/features/hotels/HotelDetailsPage"));
 const CreditsPage = lazy(() => import("@/features/hotels/CreditsPage"));
 function PageTitle() {
@@ -43,6 +44,8 @@ function PageTitle() {
             ? "My groups | Group Travel Matcher"
             : pathname === "/my-requests"
               ? "My requests | Group Travel Matcher"
+            : /^\/groups\/[^/]+\/chat$/.test(pathname)
+              ? "Team chat | Group Travel Matcher"
             : pathname.startsWith("/travellers/")
               ? "Traveller profile | Group Travel Matcher"
             : pathname === "/credits"
@@ -83,6 +86,7 @@ export default function App() {
             <Route path="/my-groups" element={<RequireTraveller><MyGroupsPage /></RequireTraveller>} />
             <Route path="/my-requests" element={<RequireTraveller><MyRequestsPage /></RequireTraveller>} />
             <Route path="/groups/:groupId" element={<GroupPage />} />
+            <Route path="/groups/:groupId/chat" element={<RequireTraveller><GroupChatPage /></RequireTraveller>} />
             <Route path="/travellers/:travellerId" element={<TravellerProfilePage />} />
             <Route path="/groups/:groupId/hotels/:hotelId" element={<RequireTraveller><HotelDetailsPage /></RequireTraveller>} />
             <Route path="/credits" element={<CreditsPage />} />

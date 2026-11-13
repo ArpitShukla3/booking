@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { CalendarDays, CheckCircle2, ChevronRight, Copy, Crown, Hotel, Loader2, Lock, MapPin, Moon, UserMinus, UserPlus, UsersRound, Wallet } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ChevronRight, Copy, Crown, Hotel, Loader2, Lock, MapPin, MessageCircle, Moon, UserMinus, UserPlus, UsersRound, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState, ErrorState, InterestTags, PageContainer, Photo } from '@/components/shared/common';
@@ -183,9 +183,20 @@ function GroupView({ group, created, reload }: { group: GroupDetails; created: b
               ) : (
                 <Button disabled title="Only group members can search hotels"><Hotel size={16} aria-hidden="true" />Search hotels together</Button>
               )}
+              {isMember ? (
+                hotels.booking ? (
+                  <Button asChild variant="outline" className="gp-chat-btn">
+                    <Link to={`/groups/${group.group_id}/chat`}><MessageCircle size={16} aria-hidden="true" />Chat with team<span className="gp-chat-dot" aria-hidden="true" /></Link>
+                  </Button>
+                ) : (
+                  <Button variant="outline" disabled title="The team chat opens once the group books its hotel">
+                    <MessageCircle size={16} aria-hidden="true" />Chat with team<Lock size={13} aria-hidden="true" />
+                  </Button>
+                )
+              ) : null}
               <CopyLink />
             </div>
-            <p className="field-hint mt-3">{isMember ? 'Members search, shortlist and finalise one hotel for the whole group.' : 'Hotel search and booking are for group members only.'}</p>
+            <p className="field-hint mt-3">{isMember ? (hotels.booking ? 'Your hotel is booked. Plan the rest of the trip in the team chat.' : 'Members search, shortlist and finalise one hotel for the whole group. The team chat opens after booking.') : 'Hotel search and booking are for group members only.'}</p>
           </div>
         </aside>
       </div>

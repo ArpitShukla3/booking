@@ -36,7 +36,7 @@ A signed-in traveller creates a group trip post. The post becomes visible to see
 - [x] After creation, `member_ids = [owner]` and the group appears in My Groups.
 - [x] The group still exists after a refresh and a backend restart.
 - [x] Invalid input is rejected with readable messages: size 0 or 5, dates outside the window, check-out before check-in, an unknown city.
-- [ ] A seeker whose search fits the new group sees it in M4 results with no code change.
+- [x] A seeker whose search fits the new group sees it in M4 results with no code change (`searches.api.test.js`: "a new M2 group shows up in matches").
 - [x] The Group Details page works for seeded groups (e.g. `G-01`) and new groups.
 
 ## Data
@@ -47,8 +47,15 @@ A signed-in traveller creates a group trip post. The post becomes visible to see
 - Editing or deleting a group after creation (nice to have)
 - Join requests (M5)
 
-## Execution plan
-_To be added later._
+## Execution plan / implementation (done, `938b633`)
+- Backend: migration `20261113000005_group_id_sequence.js` (`G-1001`+ via `next_group_id()`, owner/member indexes);
+  `groups.{routes,controller,service,helper}` with `POST /api/groups`, `GET /api/groups/mine`, `GET /api/groups/:groupId`;
+  zod rules in `validation/groups.validation.ts` (window 2027-04-01 → 2027-04-20, size 1–4, positive budget, known city);
+  `GET /api/destinations` lookup.
+- Frontend: `/groups/new` (`CreateGroupPage.tsx`, city photo picker, live nights/size preview), `/my-groups` (role tabs,
+  stage filter, pending-requests badge), `/groups/:groupId` (`GroupPage.tsx`: facts, itinerary, members, open spots,
+  trip progress). Later tickets extend this page: M5 requests/removal, M6 hotels, S1 chat button.
+- Tests: `groups.service.test.js`, `groups.controller.test.js`, `groups.api.test.js`, `groups.test.ts`, Playwright `groups.spec.ts`.
 
 
 ## Implementation record (2026-11-13)

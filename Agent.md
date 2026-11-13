@@ -162,6 +162,17 @@ M5 join-request endpoints (all need `X-Traveller-Id`; `joinRequests.{routes,cont
 
 `GET /api/groups/mine` now returns the real `pending_requests` count for owned groups.
 
+S1 team chat endpoints (`groupChat.{routes,controller,service,helper}`, mounted at `/api/groups/:groupId/chat`, all 🔒):
+
+| Method | Path | Result |
+|---|---|---|
+| GET | `/` | Members only (403), group must be booked (409). Creates the chat on first open. `{chat_id, group_id, group_name, settings, my_permissions, members}` |
+| PATCH | `/settings` | Owner only. `{messaging?, polls?}` each `ALL_MEMBERS`/`OWNER_ONLY` |
+| GET | `/messages?after=M-…` | Oldest first; latest 200 without `after` (used for 4-second polling) |
+| POST | `/messages` | `{type: TEXT|ANNOUNCEMENT, content}` → 201; announcements owner only; members need `messaging = ALL_MEMBERS` |
+| POST | `/polls` | `{question, options[2..6]}` → 201; message + options in one transaction; members need `polls = ALL_MEMBERS` |
+| POST | `/polls/:messageId/vote` | `{option_id}`; one vote per person, changing it moves the vote |
+
 M6 Common Group Page endpoints (all need `X-Traveller-Id`; **members only**, 403 otherwise; 404 unknown group; `groupHotels.{routes,controller,service,helper}` + pure `hotelPricing.service.ts`):
 
 | Method | Path | Result |
@@ -388,6 +399,16 @@ Booking does **not** change `availability` (the catalog stays read-only).
 
 Primary key: (`room_id`, `date`).
 
+### Team chat (S1, app-created; migration `…10`)
+| Table | Key columns | Notes |
+|---|---|---|
+| `group_chats` | `chat_id` PK (`C-1001`+), `group_id` unique FK → groups | `messaging`, `polls` CHECK `ALL_MEMBERS` / `OWNER_ONLY` (default ALL_MEMBERS) |
+| `chat_messages` | `seq` bigserial PK (from 1001), `message_id` generated `'M-' \|\| seq` unique | `chat_id` FK, `sender_id` FK, `type` CHECK `TEXT`/`ANNOUNCEMENT`/`POLL`, `content` 1–2000 chars, `created_at` |
+| `chat_poll_options` | `option_id` serial PK | `message_id` FK, `label`, `position` (unique per poll) |
+| `chat_poll_votes` | PK (`message_id`, `voter_id`) | `option_id` FK; one vote per person per poll, upserted when changed |
+
+All chat tables cascade when the group or message is deleted.
+
 ### Relationships
 ```
 groups.owner_id ──► travellers.traveller_id
@@ -412,6 +433,7 @@ Migrations are in `backend/migrations/` and are managed by Knex. Knex runs each 
 | `20261113000007_create_join_requests.js` | M5: `join_requests` table + `join_request_id_seq` (IDs `R-1001`+), unique (group, seeker), status/decided_at checks. `down` drops both. |
 | `20261113000008_create_group_hotels.js` | M6: `saved_hotel_options` (unique group+room+saver) and `group_bookings` (unique group, `group_booking_id_seq` → `BK-1001`+). `down` drops both tables and the sequence. |
 | `20261113000009_join_requests_removed_status.js` | Adds `REMOVED` to the `join_requests` status check. `down` converts REMOVED rows to REJECTED and restores the old check. |
+| `20261113000010_create_group_chat.js` | S1: `group_chats` (`C-1001`+, unique per group, access settings), `chat_messages` (`seq` from 1001 + generated `message_id` `M-…`), `chat_poll_options`, `chat_poll_votes`. `down` drops the four tables and the sequence. |
 
 On a fresh database after `npm run migrate`, the row counts are: interests 16, travellers 24, groups 12, destinations 5, departure_cities 4, destination_links 8, destination_rules 1, hotels 49, rooms 125, availability 2,500.
 Traveller count grows after signup; never reset existing data to 24 rows.
@@ -493,7 +515,7 @@ All amounts are whole INR integers. There is no currency conversion.
 | M6 | Common Group Page | Implemented: members-only hotel search with availability + cost split, shortlist with alignment, one locked booking (`saved_hotel_options`, `group_bookings`) |
 | G1 | Filter results | interests / gender composition filters |
 | G2 | Member profiles | profile + groups-a-traveller-is-in endpoint |
-| S1 | Chat | `group_messages` table |
+| S1 | Team chat | **Done**: one chat per group after booking, messages, announcements, polls, owner access settings. Tables `group_chats`, `chat_messages`, `chat_poll_options`, `chat_poll_votes`. See `tasks/TASK-S1-group-chat.md` |
 | X1 | Traveller profile + reviews (demo) | **Done, frontend only**: `/travellers/:travellerId`, real profile + mock reviews/ratings/Reddit-style votes. See `tasks/TASK-X1-traveller-profile-reviews.md`. Real version needs `traveller_reviews` + `votes` tables |
 
 Lookup endpoints the forms will need: `GET /api/interests`, `GET /api/destinations`, `GET /api/departure-cities`.
@@ -510,7 +532,7 @@ Each new table goes in a **new migration** (section 6).
 - Real account routes: `/signup`, `/login`, protected `/dashboard`. Axios loads signup interests/profiles from the backend. `useTravellerStore` manages seven-day identity without renewing on refresh.
 - `useDemoTravellerStore` retains the separate sample discovery identity; its Interested state on the old discovery demo stays browser-local.
 - M5 join requests are real (PostgreSQL): Interested on `/groups/:groupId`, owner approve/decline, header bell, My groups notifications, `/my-requests`.
-- X1 traveller profile `/travellers/:travellerId`: real profile; reviews, ratings and up/down votes are **labelled sample data** from `src/services/mock/reputationMock.ts` behind `src/services/reputationService.ts` (votes stored per viewer in `gtm.demo.reputation-votes.v1`). Booking (M6) is not built yet.
+- X1 traveller profile `/travellers/:travellerId`: real profile; reviews, ratings and up/down votes are **labelled sample data** from `src/services/mock/reputationMock.ts` behind `src/services/reputationService.ts` (votes stored per viewer in `gtm.demo.reputation-votes.v1`). M6 hotel search/booking and S1 team chat (`/groups/:groupId/chat`, polling every 4 s) are implemented.
 - See `AGENTS.md`, `docs/PROJECT_CONTEXT.md`, and `frontend/README.md` for frontend architecture and checks.
 - **Tailwind is pinned to 3.4.17. Do not upgrade to v4.**
 - Dev server: `http://localhost:5173`. This origin is already allowed by backend CORS.

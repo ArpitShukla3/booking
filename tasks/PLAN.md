@@ -1,13 +1,25 @@
 # Work split plan: 2 developers, 6 deliverables
 
-**M1 update, 2026-11-13:** Signup/login is implemented in `2b658a4` using the user-requested T-025 onward IDs and seven-day remembered identity. General lookups and other tracks remain planned; see TASK-M1 and project context.
+**Status, 2026-11-13:** M1–M6 are implemented, plus extras requested by the user: member removal (M5 follow-up), X1 traveller profile with demo reviews/votes, and S1 team chat. Each ticket lists its files, tests and acceptance state.
+
+| Ticket | Status |
+|---|---|
+| [M1 Sign up](TASK-M1-sign-up.md) | Done |
+| [M2 Create group post](TASK-M2-create-group-post.md) | Done |
+| [M3 Traveller search](TASK-M3-traveller-search.md) | Done |
+| [M4 See matches](TASK-M4-see-matches.md) | Done |
+| [M5 Join requests](TASK-M5-join-requests.md) (+ owner removes members) | Done |
+| [M6 Common Group Page](TASK-M6-common-group-page.md) | Done |
+| [X1 Traveller profile + reviews (demo data)](TASK-X1-traveller-profile-reviews.md) | Done (frontend, mock reviews/votes) |
+| [S1 Team chat](TASK-S1-group-chat.md) | Done |
+| G1 filters, G2 member profiles | Not started (G2 partly covered by X1) |
 
 The problem statement has 6 Must-have deliverables (M1–M6). They are split into **two tracks of 3 tickets**. The split follows the two user flows in the problem statement, so each developer owns whole features end to end: DB tables, backend API, and frontend pages.
 
 | Track | Developer | Tickets | Owns |
 |---|---|---|---|
 | **A: Traveller / Seeker** | Dev A | [M1 Sign up](TASK-M1-sign-up.md) · [M3 Traveller search](TASK-M3-traveller-search.md) · [M4 See matches](TASK-M4-see-matches.md) | identity, lookups, searches, matching engine |
-| **B: Group / Owner** | Dev B | [M2 Create group post](TASK-M2-create-group-post.md) · [M5 Join requests](TASK-M5-join-requests.md) · [M6 Common Group Page](TASK-M6-common-group-page.md) · extra [X1 Traveller profile + reviews (demo)](TASK-X1-traveller-profile-reviews.md) | groups, join requests, hotels, cost split, booking, seeker profiles |
+| **B: Group / Owner** | Dev B | [M2 Create group post](TASK-M2-create-group-post.md) · [M5 Join requests](TASK-M5-join-requests.md) · [M6 Common Group Page](TASK-M6-common-group-page.md) · extra [X1 Traveller profile + reviews (demo)](TASK-X1-traveller-profile-reviews.md) · stretch [S1 Team chat](TASK-S1-group-chat.md) | groups, join requests, hotels, cost split, booking, seeker profiles, team chat |
 
 **Why this split works:**
 - The tracks meet in only **3 places**: the current traveller (header), the Group object shape, and one link (match card → group page). All 3 are fixed in §2–§3 **before** anyone starts, so neither developer waits for the other.
@@ -114,6 +126,11 @@ Errors from every endpoint: `{ "error": { "message": string, "fields"?: { [field
 | GET | `/api/join-requests/mine` 🔒 | M5 | the seeker's requests + status |
 | GET | `/api/join-requests/incoming` 🔒 | M5 | owner notifications: pending requests on owned groups (added in M5) |
 | — | (none) | X1 | traveller profile reuses `GET /api/travellers/:id`; reviews/ratings/votes are frontend mock data, no endpoint yet |
+| GET | `/api/groups/:id/chat` 🔒 | S1 | members only, after booking (409 before); chat id, settings, my permissions, members |
+| PATCH | `/api/groups/:id/chat/settings` 🔒 | S1 | owner only; `messaging` / `polls`: `ALL_MEMBERS` or `OWNER_ONLY` |
+| GET / POST | `/api/groups/:id/chat/messages` 🔒 | S1 | list (`?after=M-…`) / send `TEXT` or `ANNOUNCEMENT` (owner only) |
+| POST | `/api/groups/:id/chat/polls` 🔒 | S1 | create poll (2–6 options) |
+| POST | `/api/groups/:id/chat/polls/:messageId/vote` 🔒 | S1 | one vote per person, can be changed |
 | GET | `/api/groups/:id/hotels` 🔒 | M6 | members only; options with total + per-member cost |
 | GET / POST / DELETE | `/api/groups/:id/saved-options` 🔒 | M6 | shortlist + alignment |
 | GET / POST | `/api/groups/:id/booking` 🔒 | M6 | one booking per group; 409 if one already exists |
@@ -126,9 +143,9 @@ Errors from every endpoint: `{ "error": { "message": string, "fields"?: { [field
 |---|---|---|
 | Backend features (each has `routes/<f>.routes.js`, `controllers/<f>.controller.js`, `services/<f>.service.js`, `helpers/postgres/<f>.helper.js`) | `lookups`, `travellers`, `searches`, `matches` | `groups`, `joinRequests`, `groupHotels` |
 | Pure logic + unit tests | `services/matching.service.js` (the 6 rules, scoring; no DB) | `services/hotelPricing.service.js` (rooms needed, total, per member; no DB) |
-| Migrations / tables | `searches` | `join_requests`, `saved_hotel_options`, `group_bookings` |
-| Frontend pages | `/signup`, `/login`, `/search`, `/searches/:id/matches`, `/me` | `/groups/new`, `/my-groups`, `/groups/:groupId`, `/groups/:groupId/hotels`, `/my-requests`, `/travellers/:travellerId` (X1), `/credits` |
-| Frontend folders | `src/features/traveller/`, `src/features/search/` | `src/features/groups/`, `src/features/hotels/`, `src/features/profile/` (X1) |
+| Migrations / tables | `searches` | `join_requests`, `saved_hotel_options`, `group_bookings`, `group_chats`, `chat_messages`, `chat_poll_options`, `chat_poll_votes` |
+| Frontend pages | `/signup`, `/login`, `/search`, `/searches/:id/matches`, `/me` | `/groups/new`, `/my-groups`, `/groups/:groupId`, `/groups/:groupId/hotels`, `/my-requests`, `/travellers/:travellerId` (X1), `/groups/:groupId/chat` (S1), `/credits` |
+| Frontend folders | `src/features/traveller/`, `src/features/search/` | `src/features/groups/`, `src/features/hotels/`, `src/features/profile/` (X1), `src/features/chat/` (S1) |
 
 **Cross-track reads:** if your service needs the other track's data (e.g. Track B shows member profiles, Track A reads groups for matching), **call the other track's helper read functions** (`travellers.helper.findByIds`, `groups.helper.listOpenByCity`). Don't write your own SQL against their tables. Ask the owner to add a missing read function; it's a small additive change.
 
@@ -152,7 +169,7 @@ Phase 2   M3: searches table, form, validation M5: join_requests, Interested but
 Phase 3   M4: ranking, reasons UI, empty state  M6: hotel search + cost, shortlist,
           then G1 filters, G2 member profiles  alignment, confirm popup, booking lock
           ═══ SYNC 3: full demo rehearsal (§6), README, known limitations ═══
-Phase 4   Stretch S1 chat / polish: whoever finishes first
+Phase 4   Stretch S1 chat / polish: whoever finishes first  (S1 done by Track B, see TASK-S1)
 ```
 
 At every sync point:

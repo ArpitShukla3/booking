@@ -54,7 +54,7 @@ The frontend must get these from the backend. It must not read the data files.
 - [x] After a backend restart, the profile still exists.
 - [x] A user can choose an existing seeded traveller (e.g. Sarah Thomas `T-001`) and act as them.
 - [x] Signup interest IDs/labels come from the real `/api/interests` endpoint.
-- [ ] General destination/departure lookups from the original larger M1 plan (deferred).
+- [x] General destination/departure lookups: `GET /api/destinations` and `GET /api/departure-cities` (added with M2/M3 in `938b633`, covered by `groups.api.test.js` and `searches.api.test.js`).
 - [x] Invalid input (empty name, unknown interest, bad gender value) is rejected by the backend with a readable message, and the form shows it.
 - [x] The judges' flow works: "add a new traveller" with any valid values from the data.
 

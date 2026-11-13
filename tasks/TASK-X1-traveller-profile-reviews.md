@@ -7,7 +7,7 @@
 | Priority | P2 |
 | Depends on | M1 (`GET /api/travellers/:id`), M5 (join-request cards and owner notifications) |
 | Blocks | Nothing. A real reviews backend can replace the mock later. |
-| Status | **Implemented (frontend, demo data), 2026-11-13.** Tick the criteria below once `npm test` and `tests/profile.spec.ts` pass. |
+| Status | **Done (frontend, demo data), 2026-11-13.** Vitest and `tests/profile.spec.ts` passing. |
 
 ## Goal
 When an owner reviews a join request, they can click **View profile** to see the seeker's details, the
@@ -45,13 +45,13 @@ use **mock data for display only**. They are not a full feature.
   (`getReputation`, `vote`), so a real API later only replaces that adapter.
 
 ## Acceptance criteria
-- [ ] Owner clicks **View profile** on Priya's request → `/travellers/T-002` shows her real profile, rating summary and reviews.
-- [ ] Back link returns to the group's join requests.
-- [ ] Upvote / toggle off / switch to downvote update the score correctly on the profile and on each review.
-- [ ] The viewer's votes survive a page reload in the same browser; another viewer does not see them.
-- [ ] Reviews can be sorted; an unknown ID shows "Traveller not found".
-- [ ] The page clearly labels the data as sample data.
-- [ ] Fits a 360 px phone screen.
+- [x] Owner clicks **View profile** on Priya's request → `/travellers/T-002` shows her real profile, rating summary and reviews.
+- [x] Back link returns to the group's join requests.
+- [x] Upvote / toggle off / switch to downvote update the score correctly on the profile and on each review.
+- [x] The viewer's votes survive a page reload in the same browser; another viewer does not see them.
+- [x] Reviews can be sorted; an unknown ID shows "Traveller not found".
+- [x] The page clearly labels the data as sample data.
+- [x] Fits a 360 px phone screen.
 
 ## Files
 | Layer | File |
@@ -71,8 +71,7 @@ No backend, database or migration changes.
   per-viewer stored votes, un-vote clears storage, corrupt storage fallback.
 - Playwright `frontend/tests/profile.spec.ts` (backend running): View profile from a join request + Back link;
   vote up / toggle / switch / reload; sort + not-found; 360 px overflow.
-- Status: written; run by the developer (`npm test`, `npm run test:e2e -- tests/profile.spec.ts`).
-  Typecheck and Oxlint pass.
+- Status: passing (Vitest 93/93 and Playwright `profile.spec.ts` in the full runs on 2026-11-13). Typecheck and Oxlint pass.
 
 ## Out of scope
 - Writing reviews, leaving ratings after a trip, moderation/reporting.

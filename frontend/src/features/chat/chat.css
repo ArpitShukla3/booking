@@ -1,0 +1,85 @@
+/* S1 team chat. Booking.com look built on the tokens in src/index.css. */
+.ct-back { display: inline-flex; align-items: center; gap: 5px; margin-bottom: 12px; }
+
+.ct-header { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 16px 18px; }
+.ct-header h1 { font-size: 22px; }
+.ct-header-icon { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: var(--booking); color: #fff; flex: none; }
+.ct-header-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; color: var(--secondary-text); font-size: 13px; margin-top: 2px; }
+.ct-header-access { color: var(--secondary-text); font-size: 12px; margin-top: 4px; }
+.ct-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; border-radius: 99px; background: var(--pale-blue); color: var(--booking); font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+.ct-panel { margin-top: 14px; display: flex; flex-direction: column; height: min(70vh, 720px); min-height: 420px; overflow: hidden; }
+.ct-sync { background: var(--warning-bg); color: #6b4a00; font-size: 12px; padding: 4px 12px; text-align: center; }
+.ct-empty { flex: 1; display: grid; place-content: center; justify-items: center; gap: 6px; text-align: center; color: var(--secondary-text); padding: 24px; }
+.ct-empty strong { color: var(--text); }
+
+.ct-list { list-style: none; margin: 0; padding: 16px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; background: #f7f8fa; scroll-behavior: smooth; }
+.ct-day { align-self: center; font-size: 11px; color: var(--secondary-text); font-weight: 700; }
+.ct-day span { background: #fff; border: 1px solid var(--line); border-radius: 99px; padding: 2px 10px; }
+
+.ct-row { display: flex; align-items: flex-end; gap: 8px; max-width: 78%; animation: gp-rise .25s ease both; }
+.ct-row.is-mine { align-self: flex-end; flex-direction: row-reverse; }
+.ct-row--wide { max-width: 100%; align-self: stretch; justify-content: center; }
+.ct-bubble { background: #fff; border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; padding: 8px 12px; min-width: 120px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.ct-row.is-mine .ct-bubble { background: var(--action-blue); border-color: var(--action-blue); color: #fff; border-radius: 14px 14px 4px 14px; }
+.ct-bubble p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+.ct-sender { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--booking); margin-bottom: 2px; }
+.ct-row.is-mine .ct-sender { color: rgba(255,255,255,.9); }
+.ct-owner-tag { display: inline-flex; align-items: center; gap: 2px; font-size: 10px; font-weight: 700; padding: 0 6px; border-radius: 99px; background: var(--search-yellow); color: #3b2a00; }
+.ct-meta { display: flex; justify-content: flex-end; gap: 8px; font-size: 10px; color: var(--secondary-text); margin-top: 3px; }
+.ct-row.is-mine .ct-meta { color: rgba(255,255,255,.8); }
+.ct-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+.ct-announcement { width: min(560px, 100%); background: #fffaf0; border: 1px solid #f5d27a; border-left: 4px solid var(--search-yellow); border-radius: 8px; padding: 10px 14px; }
+.ct-announcement header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: #6b4a00; margin-bottom: 4px; }
+.ct-announcement header .ct-sender { margin: 0 0 0 auto; }
+.ct-announcement p { white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 600; }
+
+.ct-poll-wrap { width: min(520px, 100%); background: #fff; border: 1px solid var(--light-blue); border-radius: 10px; padding: 10px 14px; }
+.ct-poll-wrap header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.ct-kind { font-size: 11px; font-weight: 700; color: var(--booking); background: var(--pale-blue); border-radius: 99px; padding: 1px 8px; }
+.ct-poll { border: 0; margin: 0; padding: 0; min-width: 0; }
+.ct-poll legend { display: flex; align-items: center; gap: 6px; font-weight: 700; margin-bottom: 8px; }
+.ct-poll-options { display: grid; gap: 6px; }
+.ct-option { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #fff; cursor: pointer; overflow: hidden; isolation: isolate; transition: border-color .15s; }
+.ct-option:hover { border-color: var(--action-blue); }
+.ct-option:focus-visible { outline: 2px solid var(--action-blue); outline-offset: 2px; }
+.ct-option.is-chosen { border-color: var(--action-blue); font-weight: 700; }
+.ct-option-bar { position: absolute; inset: 0 auto 0 0; background: var(--pale-blue); z-index: -1; transition: width .45s ease; }
+.ct-option.is-chosen .ct-option-bar { background: var(--light-blue); }
+.ct-option-label { display: inline-flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.ct-option-pct { font-size: 12px; color: var(--secondary-text); font-weight: 700; }
+.ct-poll-total { font-size: 12px; color: var(--secondary-text); margin-top: 6px; }
+
+.ct-composer { border-top: 1px solid var(--line); padding: 10px 12px; background: #fff; display: grid; gap: 8px; }
+.ct-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.ct-tab { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: #fff; border-radius: 99px; padding: 4px 12px; font-size: 13px; font-weight: 700; color: var(--secondary-text); cursor: pointer; }
+.ct-tab[aria-selected="true"] { background: var(--booking); border-color: var(--booking); color: #fff; }
+.ct-tab:disabled { opacity: .55; cursor: not-allowed; }
+.ct-tab:focus-visible { outline: 2px solid var(--action-blue); outline-offset: 2px; }
+.ct-input-row { display: flex; gap: 8px; align-items: flex-end; }
+.ct-input-row > button { height: 44px; width: 48px; padding: 0; }
+.ct-textarea { flex: 1; resize: none; min-height: 44px; max-height: 160px; border: 1px solid hsl(var(--input)); border-radius: 8px; padding: 10px 12px; font: inherit; background: #fff; }
+.ct-textarea:focus-visible { outline: 2px solid var(--action-blue); outline-offset: 1px; }
+.ct-input-row.is-announcement .ct-textarea { border-color: var(--search-yellow); background: #fffaf0; }
+.ct-composer-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 16px; }
+.ct-composer-foot small { color: var(--secondary-text); font-size: 11px; }
+.ct-poll-form { display: grid; gap: 8px; }
+.ct-poll-option-row { display: flex; gap: 6px; align-items: center; }
+.ct-readonly { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding: 14px; color: var(--secondary-text); background: var(--neutral); }
+
+.ct-setting { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 0 0 10px; display: grid; gap: 6px; }
+.ct-setting legend { font-weight: 700; padding: 0 4px; }
+.ct-radio { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.ct-radio input { width: 16px; height: 16px; accent-color: var(--action-blue); }
+
+@media (max-width: 600px) {
+  .ct-panel { height: 72vh; }
+  .ct-row { max-width: 92%; }
+  .ct-header h1 { font-size: 19px; }
+  .ct-header > .ml-auto { margin-left: 0; width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ct-row, .ct-option-bar { animation: none; transition: none; }
+  .ct-list { scroll-behavior: auto; }
+}

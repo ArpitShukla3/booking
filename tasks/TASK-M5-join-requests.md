@@ -64,9 +64,9 @@ A seeker clicks **"Interested"** on a group. The group owner sees the pending re
 - Frontend: `joinRequestService.ts`, `features/groups/joinRequests.ts` (button state rules), `requestParts.tsx` (Interested panel, owner request cards with shared interests highlighted + decline confirmation, notifications panel), `MyRequestsPage.tsx` at `/my-requests`.
 - Tests: backend unit `joinRequests.service/controller` + updated `groups.service`, integration `joinRequests.api.test.js` (Scenario B, 409s, 403s, overflow, concurrent approvals); frontend Vitest `joinRequests.test.ts`, Playwright `tests/joinRequests.spec.ts`.
 
-### Removal follow-up (2026-11-13), tests written, not yet run
+### Removal follow-up (2026-11-13), tests passing
 - Migration `20261113000009_join_requests_removed_status.js` (adds `REMOVED` to the status check; `down` maps REMOVED → REJECTED).
 - Backend: `groups.helper.removeMember`, `joinRequests.helper.markRemoved`, `groups.service.removeMember`, `groups.controller.removeMember`, route in `groups.routes.js`; `REMOVED` blocker in `joinRequests.service`.
 - Frontend: Remove button + confirm on member cards (`GroupPage.tsx`), `groupService.removeMember`, `REMOVED` status label/pill/button state, My requests filter.
 - Tests: backend unit `groups.service.test.js` (removeMember), `joinRequests.service.test.js` (REMOVED blocker), `groups.controller.test.js`; integration `joinRequests.api.test.js` (3 cases); frontend `joinRequests.test.ts`; Playwright `tests/joinRequests.spec.ts` (2 cases).
-- [ ] Owner removes an approved member → spot reopens, request `REMOVED`, member sees "Removed from group" and cannot request again (tick after the tests pass).
+- [x] Owner removes an approved member → spot reopens, request `REMOVED`, member sees "Removed from group" and cannot request again (backend 129/54 and Playwright `joinRequests.spec.ts` passing, 2026-11-13).

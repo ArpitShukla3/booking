@@ -22,6 +22,7 @@ The subsequent M1 task adds real PostgreSQL signup, ID sign-in, seven-day identi
 - Real identity uses `useTravellerStore`, Axios and PostgreSQL. Store only `{traveller_id, expires_at}` under `group_match_active_traveller` for seven days after signup/explicit login; restoration never extends it.
 - `useDemoTravellerStore` and `gtm.discovery.requests.v1` are separate, explicitly labelled discovery-demo state. Never use a sample profile as a real signed-in account.
 - M5 join requests (approve/reject) are implemented for real. X1 traveller reviews, ratings and votes are user-authorized **display-only mock data** (`src/services/mock/reputationMock.ts`, key `gtm.demo.reputation-votes.v1`); keep them labelled as sample data and behind `reputationService` until a backend exists. See `tasks/TASK-X1-traveller-profile-reviews.md`.
+- S1 team chat is real (PostgreSQL, `/groups/:groupId/chat`, opens after M6 booking). Keep the simple owner/member access model and polling (no websockets) unless a task asks otherwise. See `tasks/TASK-S1-group-chat.md`.
 - Use theme tokens, accessible labels, keyboard controls, visible focus and local
   travel photos with meaningful alt text. Keep errors and empty states recoverable.
 - Run `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` in `frontend/`;
