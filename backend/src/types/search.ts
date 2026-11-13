@@ -38,16 +38,34 @@ export interface MatchReasons {
   spots_left: number;
 }
 
+/** G1: gender mix of the group's current members (owner included). */
+export type CompositionKind = 'WOMEN_ONLY' | 'MEN_ONLY' | 'MIXED';
+export interface MatchComposition { female: number; male: number; kind: CompositionKind }
+
 export interface Match {
   group: Group;
   score: number;
   reasons: MatchReasons;
   explanations: string[];
+  composition: MatchComposition;
+}
+
+/** G1 filters (all optional). */
+export interface MatchFilters { min_shared: number | null; must: string[]; composition: CompositionKind | null }
+export interface MatchFacets {
+  composition: Record<CompositionKind, number>;
+  interests: { interest: string; label: string; count: number }[];
+  max_shared: number;
 }
 
 export interface MatchesResponse {
   search: Search;
+  /** Matches after the G1 filters. */
   total: number;
+  /** Matches that pass the 6 rules, before filters. */
+  total_unfiltered: number;
+  filters: MatchFilters;
+  facets: MatchFacets;
   matches: Match[];
 }
 

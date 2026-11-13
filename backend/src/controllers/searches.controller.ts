@@ -15,7 +15,8 @@ export async function getSearch(req: Request, res: Response) {
   res.status(200).json(await searchesService.getSearch(me(req).traveller_id, req.params.searchId));
 }
 export async function getMatches(req: Request, res: Response) {
-  res.status(200).json(await matchesService.getMatches(me(req).traveller_id, req.params.searchId, req.query.sort));
+  const { sort, ...filters } = req.query;
+  res.status(200).json(await matchesService.getMatches(me(req).traveller_id, req.params.searchId, sort, filters));
 }
 export async function listDepartureCities(_req: Request, res: Response) {
   res.status(200).json(await searchesService.listDepartureCities());

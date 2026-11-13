@@ -18,3 +18,6 @@ export async function removeMember(req: Request, res: Response) {
 export async function leaveGroup(req: Request, res: Response) {
   res.status(200).json(await groupsService.leaveGroup((req as WithTraveller).traveller.traveller_id, String(req.params.groupId)));
 }
+export async function listTravellerGroups(req: Request, res: Response) {
+  res.status(200).json(await groupsService.listTravellerGroups(String(req.params.traveller_id)));
+}

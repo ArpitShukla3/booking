@@ -7,6 +7,7 @@ import { destinationImage } from "@/data/destinations";
 import { money, tripDates } from "@/lib/format";
 import { cityPhoto } from "@/features/groups/media";
 import type { LiveMatch } from "@/types/search";
+import { COMPOSITION_LABELS, compositionText } from "./matchFilters";
 
 /** Warm the details page chunk so opening a match feels instant. */
 const prefetch = () => { void import("@/features/groups/GroupPage"); };
@@ -35,6 +36,11 @@ export function GroupCard({
               <MapPin size={14} aria-hidden="true" />
               {group.city}, {group.country_name} · <Crown size={13} aria-hidden="true" /> Hosted by {group.owner.name}
             </p>
+            {match.composition ? (
+              <p className={`gm-mix gm-mix--${match.composition.kind.toLowerCase()}`}>
+                <UsersRound size={13} aria-hidden="true" />{COMPOSITION_LABELS[match.composition.kind]} · {compositionText(match.composition)}
+              </p>
+            ) : null}
           </div>
           <div className="match-score" title="Ranking score out of 100: shared interests 50, budget closeness 30, date overlap 20">
             <span>Match score</span>

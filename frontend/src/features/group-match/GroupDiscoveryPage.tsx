@@ -18,6 +18,8 @@ import { GroupSearchForm } from "./forms";
 import type { SearchCatalogs } from "./forms";
 import { GroupCard } from "./GroupCard";
 import type { LiveSearchForm } from "./searchSchema";
+import { MatchFiltersPanel } from "./MatchFiltersPanel";
+import { filtersFromParams, filtersKey, NO_FILTERS, withFilters } from "./matchFilters";
 import "./group-match.css";
 
 const RULES = [
@@ -105,6 +107,8 @@ export default function GroupDiscoveryPage() {
   const [params, setParams] = useSearchParams();
   const searchId = params.get("search");
   const sort = toSort(params.get("sort"));
+  const filters = filtersFromParams(params);
+  const fKey = filtersKey(filters);
   const [recentTick, setRecentTick] = useState(0);
 
   const catalogs = useAsync<SearchCatalogs>(
@@ -114,13 +118,13 @@ export default function GroupDiscoveryPage() {
   );
   const recent = useAsync(() => searchService.listMySearches(), `recent:${traveller.traveller_id}:${recentTick}`);
   const results = useAsync(
-    () => (searchId ? searchService.getMatches(searchId, sort) : Promise.resolve(null)),
-    `matches:${traveller.traveller_id}:${searchId}:${sort}`,
+    () => (searchId ? searchService.getMatches(searchId, sort, filters) : Promise.resolve(null)),
+    `matches:${traveller.traveller_id}:${searchId}:${sort}:${fKey}`,
   );
   const labels = useMemo(() => new Map((catalogs.data?.interests ?? []).map((i) => [i.interest, i.label])), [catalogs.data]);
 
   const openSearch = (id: string) => {
-    const next = new URLSearchParams(params);
+    const next = withFilters(params, NO_FILTERS); // filters belong to one result list
     next.set("search", id);
     setParams(next);
   };
@@ -187,7 +191,7 @@ export default function GroupDiscoveryPage() {
                 <p className="results-eyebrow">Your next adventure, together</p>
                 <h2>
                   {!searchId ? "Tell us about your trip"
-                    : results.data ? `${results.data.search.city}: ${results.data.total} matching ${results.data.total === 1 ? "group" : "groups"}`
+                    : results.data ? `${results.data.search.city}: ${results.data.total_unfiltered} matching ${results.data.total_unfiltered === 1 ? "group" : "groups"}`
                     : "Finding your people…"}
                 </h2>
                 <p>{results.data ? `${dateLabel(results.data.search.check_in)} – ${dateLabel(results.data.search.check_out)} · ${money(results.data.search.budget_inr)} per person` : "April 2027 · Small groups, shared experiences"}</p>
@@ -217,15 +221,27 @@ export default function GroupDiscoveryPage() {
             ) : results.loading ? <ResultsSkeleton />
               : notFound ? <EmptyState title="We couldn’t find that search"><p>It may belong to another traveller. Run a new search on the left.</p></EmptyState>
               : results.error || !results.data ? <ErrorState error={results.error} retry={results.retry} />
-              : results.data.matches.length ? (
-                <div className="space-y-4" aria-live="polite" key={`${searchId}:${sort}`}>
+              : !results.data.total_unfiltered ? <NoMatches city={results.data.search.city} />
+              : (
+              <>
+              <MatchFiltersPanel filters={results.data.filters} facets={results.data.facets} total={results.data.total}
+                totalUnfiltered={results.data.total_unfiltered} onChange={(next) => setParams(withFilters(params, next))} />
+              {results.data.matches.length ? (
+                <div className="space-y-4" aria-live="polite" key={`${searchId}:${sort}:${fKey}`}>
                   {results.data.matches.map((match, i) => (
                     <GroupCard key={match.group.group_id} match={match} labels={labels} style={stagger(i)} />
                   ))}
                   {results.data.total > results.data.matches.length
                     ? <p className="field-hint">Showing the top {results.data.matches.length} of {results.data.total} groups.</p> : null}
                 </div>
-              ) : <NoMatches city={results.data.search.city} />}
+              ) : (
+                <EmptyState title="No groups match these filters"
+                  action={<Button variant="outline" onClick={() => setParams(withFilters(params, NO_FILTERS))}>Clear filters</Button>}>
+                  <p>All {results.data.total_unfiltered} groups still match your trip. Loosen a filter to see them.</p>
+                </EmptyState>
+              )}
+              </>
+              )}
             <div className="ranking-note" id="ranking-note">
               <h3>Compatible first. Then a little closer.</h3>
               <p>

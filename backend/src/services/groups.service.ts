@@ -8,7 +8,7 @@ import HttpError = require('../utils/HttpError');
 import { parseInput } from '../validation/travellers.validation.ts';
 import { createGroupSchema } from '../validation/groups.validation.ts';
 import type { Knex } from 'knex';
-import type { BookingSplitChange, BookingSummary, Group, GroupDetails, GroupRow, GroupStage, HotelStatus, MembershipChange, MyGroup } from '../types/group.ts';
+import type { BookingSplitChange, BookingSummary, Group, GroupDetails, GroupRow, GroupStage, HotelStatus, MembershipChange, MyGroup, TravellerGroup } from '../types/group.ts';
 import type { BookingRow } from '../types/groupHotels.ts';
 import type { Traveller } from '../types/traveller.ts';
 
@@ -153,6 +153,18 @@ async function leaveGroup(travellerId: string, groupId: string): Promise<Members
   return endMembership(group.group_id, travellerId, 'LEFT');
 }
 
+/**
+ * G2: the groups a traveller organises or has joined, for their public profile. Same public fields
+ * as GET /api/groups/:id (which needs no sign-in); join requests and booking details stay private.
+ */
+async function listTravellerGroups(travellerId: string): Promise<TravellerGroup[]> {
+  const id = String(travellerId).trim().toUpperCase();
+  if (!(await travellersHelper.findById(id))) throw HttpError.notFound('Traveller ID not found');
+  const rows: GroupRow[] = await groupsHelper.listForTraveller(id);
+  const activity: Record<string, HotelActivity> = await groupHotelsHelper.hotelStatusByGroups(rows.map((row) => row.group_id));
+  return rows.map((row) => ({ ...toGroupDto(row, toHotelStatus(activity[row.group_id])), role: row.owner_id === id ? 'OWNER' : 'MEMBER' }));
+}
+
 async function getGroupRowOr404(groupId: string): Promise<GroupRow> {
   const row: GroupRow | undefined = await groupsHelper.findById(String(groupId).trim().toUpperCase());
   if (!row) throw HttpError.notFound('Group not found');
@@ -160,5 +172,5 @@ async function getGroupRowOr404(groupId: string): Promise<GroupRow> {
 }
 
 // Exported as one object (not ES named exports) so unit tests can mock.method() it.
-const groupsService = { nightsBetween, stageOf, toGroupDto, perMemberShare, createGroup, getGroup, listMyGroups, removeMember, leaveGroup };
+const groupsService = { nightsBetween, stageOf, toGroupDto, perMemberShare, createGroup, getGroup, listMyGroups, removeMember, leaveGroup, listTravellerGroups };
 export = groupsService;

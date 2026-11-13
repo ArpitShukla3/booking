@@ -574,8 +574,8 @@ All amounts are whole INR integers. There is no currency conversion.
 | M4 | See matches | matching endpoint that uses the 6 rules above and returns the reason for each match |
 | M5 | Interest / approve / reject | new `join_requests` table (group, seeker, status `PENDING/APPROVED/REJECTED`); on approve, append to `groups.member_ids` |
 | M6 | Common Group Page | Implemented: members-only hotel search with availability + cost split, shortlist with alignment, one locked booking (`saved_hotel_options`, `group_bookings`) |
-| G1 | Filter results | interests / gender composition filters |
-| G2 | Member profiles | profile + groups-a-traveller-is-in endpoint |
+| G1 | Filter results | **Done**: `?shared=&must=&mix=` on matches (`matchFilters.service.ts`), facets + gender mix per match. See `tasks/TASK-G1-filter-matches.md` |
+| G2 | Member profiles | **Done**: `GET /api/travellers/:id/groups` (public) + Group trips on `/travellers/:id`, member names link to profiles. See `tasks/TASK-G2-member-profiles.md` |
 | S1 | Team chat | **Done**: one chat per group after booking, messages, announcements, polls, owner access settings. Tables `group_chats`, `chat_messages`, `chat_poll_options`, `chat_poll_votes`. See `tasks/TASK-S1-group-chat.md` |
 | X1 | Traveller profile + reviews (demo) | **Done, frontend only**: `/travellers/:travellerId`, real profile + mock reviews/ratings/Reddit-style votes. See `tasks/TASK-X1-traveller-profile-reviews.md`. Real version needs `traveller_reviews` + `votes` tables |
 

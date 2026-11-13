@@ -1,6 +1,6 @@
 ================================================================================
   GROUP TRAVEL MATCHER  -  FEATURES IMPLEMENTED BY ADIL (git author: eyeaadil)
-  Repository: github.com/ArpitShukla3/booking      Branch: main      Date: 2026-11-13
+  Repository: github.com/ArpitShukla3/booking      Branch: main      Updated: 2026-11-13 (4d10109)
 ================================================================================
 
 CONTENTS
@@ -16,14 +16,17 @@ CONTENTS
   10. Feature 6  - X1 Traveller profile with reviews, rating and Reddit-style votes
   11. Feature 7  - S1 Team chat (messages, announcements, polls, group settings)
   12. Feature 8  - "Request body too large" (413) error handling
-  13. State management (complete picture)
-  14. Database tables and migrations Adil added
-  15. Files Adil mainly changed
-  16. Testing (strategy, files, latest results)
-  17. Known limitations / open items
-  18. What Adil can improve in the CURRENT implementation
-  19. NEW features that can be added
-  20. How to run and verify
+  13. Feature 9  - Join request lifecycle: note, cancel, leave, auto-close, cost re-split
+  14. Feature 10 - X4 Group photo gallery with MinIO (S3) storage
+  15. Feature 11 - G1 Match filters + G2 Member profiles (groups organised / joined)
+  16. State management (complete picture)
+  17. Database tables and migrations Adil added
+  18. Files Adil mainly changed
+  19. Testing (strategy, files, latest results)
+  20. Known limitations / open items
+  21. What Adil can improve in the CURRENT implementation
+  22. NEW features that can be added
+  23. How to run and verify
 
 
 ================================================================================
@@ -46,6 +49,13 @@ Adil owned the IDENTITY part of Track A (M1) and most of Track B's social flow:
   Team chat                    S1                Group chat after hotel booking: messages,
                                                  announcements, polls, owner access settings
   Error handling               (infra)           Clean 413 when a request body is too large
+  Request lifecycle            M5 follow-ups     Note with request, cancel, leave group,
+                                                 auto-close when full, cost re-split after booking
+  Photo gallery                X4                Members-only trip photos stored in MinIO (S3):
+                                                 gallery page + photo page, upload, delete
+  Match filters                G1                Filter matches by gender mix and shared interests
+  Member profiles              G2                Profile shows trips organised / joined; member
+                                                 names on group pages link to profiles
 
 Teammate Arpit (ArpitShukla3) built: initial setup, data seeding, health check, M2 create group,
 M3 search, M4 matching, M6 hotels/booking, X2 live trip status, X3 "Ask the reviews".
@@ -65,6 +75,9 @@ M3 search, M4 matching, M6 hotels/booking, X2 live trip status, X3 "Ask the revi
   6fadfc4  feat: owner can remove group members (M5 follow-up)      25 files,  +291
   509eefa  Merge branch 'main' (combined with M6 hotel booking)     (merge, conflicts resolved)
   803d828  feat: team chat for booked groups (S1) + ticket sweep    30 files,  +1,717
+  2c18504  feat: request notes, cancel, leave, auto-close and       33 files,  +1,496
+           cost re-split
+  4d10109  feat: group photo gallery with MinIO (S3) storage        31 files,  +2,053
 
   See any commit:   git show --stat <commit>
 
@@ -88,18 +101,30 @@ BACKEND (backend/)
                                "npm run typecheck" runs tsc in noEmit mode.
   node:test + supertest        Built-in test runner (no extra framework); supertest calls the
                                Express app in memory for integration tests.
+  MinIO (Docker)               S3-compatible object storage for trip photos (X4). It is NOT part
+                               of PostgreSQL: Postgres keeps photo metadata, MinIO keeps files.
+                               Image bitnamilegacy/minio:2025.4.22, because the official
+                               minio/minio images can no longer be pulled (no further updates:
+                               fine for local dev, not production).
+  AWS SDK v3                   @aws-sdk/client-s3 + s3-request-presigner talk to MinIO with the
+                               standard S3 API, so real AWS S3 works by changing S3_* settings.
+                               Presigned links let <img> load private photos.
+  multer                       Receives multipart photo uploads (memory storage, size/count
+                               limits) before the service checks and stores them.
 
 FRONTEND (frontend/)
   React 19 + Vite 8 + TS       Fast dev server and typed components.
   React Router 7               Routes such as /signup, /login, /dashboard, /my-requests,
-                               /travellers/:id, /groups/:id/chat; RequireTraveller guards.
+                               /travellers/:id, /groups/:id/chat, /groups/:id/photos(/:photoId);
+                               RequireTraveller guards.
   Zustand 5                    Small global stores (signed-in traveller, demo traveller). No
                                boilerplate, easy to unit test with an injected API/storage.
   Axios                        One configured client (src/lib/api.ts) that adds the
                                X-Traveller-Id header and turns errors into ApiError.
   React Hook Form + Zod        Signup/login forms: client-side rules mirror the backend rules.
   Tailwind 3.4.17 + plain CSS  Booking.com look with theme tokens in index.css; feature CSS
-                               files (groups.css, profile.css, chat.css). Tailwind is pinned.
+                               files (groups.css, profile.css, chat.css, photos.css). Tailwind is
+                               pinned.
   shadcn-style UI + lucide     Button, Dialog, Input, Select components and icons.
   Vitest                       Unit tests for pure logic (vote rules, button states, chat maths).
   Playwright                   Browser tests against the real backend + database.
@@ -122,6 +147,7 @@ BACKEND: router -> controller -> service -> helper  (Agent.md section 4.1)
   services/<f>.service.ts       ALL business rules, validation, transactions, HttpError.
                                 Exported as one object so unit tests can mock.method() it.
   helpers/postgres/<f>.helper.js The ONLY place with SQL (Knex). Optional trx parameter last.
+  helpers/storage/photos.helper.js The ONLY place that talks to S3/MinIO (same idea as SQL).
   validation/<f>.validation.ts  Zod schemas.
   types/<f>.ts                  Row and DTO types.
 
@@ -433,9 +459,10 @@ WHAT   middleware/errorHandler.js returns 413 { error: { message: 'Request body 
 TESTS  backend/tests/unit/middleware/errorHandler.test.js, integration/health.api.test.js.
 
 
---------------------------------------------------------------------------------
-FEATURE 9 - JOIN REQUEST LIFECYCLE FOLLOW-UPS (2026-11-13)
---------------------------------------------------------------------------------
+================================================================================
+13. FEATURE 9 - JOIN REQUEST LIFECYCLE FOLLOW-UPS (2c18504)
+================================================================================
+
 WHAT   1. Note with the request: "Interested" opens a dialog with an optional note (max 500).
           The owner sees it on the request card and in My groups notifications.
        2. Cancel: the seeker can cancel a pending request (group page and My requests).
@@ -454,6 +481,10 @@ BACKEND
   groups.service.endMembership(): one transaction -> lock group, remove member, record
   REMOVED/LEFT, re-split the booking (groupHotels.helper.updateBookingSplit).
   Migration 20261113000013_join_request_lifecycle.js (statuses + message column).
+  Approving a CLOSED request answers 409 "This request was closed because the group is full."
+WHY       Requested improvements from section 21 (items 4-7): seekers and members needed a
+          way out, owners needed context (the note), and a booked hotel's cost split must stay
+          correct when the group shrinks.
 FRONTEND  requestParts.tsx (note dialog, RequestNote, Cancel request), MyRequestsPage.tsx (cancel,
           new filters), GroupPage.tsx (Leave group, split warnings), joinRequests.ts
           (REOPENABLE, splitPreview, perMemberShare), groupService.leaveGroup,
@@ -465,7 +496,110 @@ TESTS     joinRequests.service + groups.service unit tests, 5 new integration ca
 
 
 ================================================================================
-13. STATE MANAGEMENT (COMPLETE PICTURE)
+14. FEATURE 10 - X4 GROUP PHOTO GALLERY WITH MINIO (S3) STORAGE (4d10109)
+================================================================================
+
+WHAT THE USER SEES
+  Group page: "Trip photos" button (disabled with a lock until the hotel is booked).
+  NEW PAGE /groups/:groupId/photos
+    - Header "Trip photos" ("Trip memories" after the check-out date), photo count, privacy note.
+    - Uploader: choose files or drag and drop, previews, optional caption per photo, progress
+      bar while uploading, readable reasons for rejected files, remaining-room counter.
+    - Grid of photos (newest first) with uploader and date; click opens the photo page.
+  NEW PAGE /groups/:groupId/photos/:photoId
+    - Large photo, caption, "Shared by" (+ Organiser tag), date, dimensions and size,
+      "Photo N of M", previous/next buttons and ← → keys, "Open full size",
+      "Delete photo" (uploader or organiser) with confirmation.
+  States: not open yet (409), "Members only" (403), "Not found" (404).
+WHY      Members wanted a private place to share trip photos. Files don't belong in PostgreSQL
+         (bloated backups), so they go to object storage; MinIO gives S3 locally.
+HOW IT WORKS (architecture)
+  Postgres  = metadata (table group_photos)      MinIO = image files (bucket group-photos)
+  docker-compose "minio" service: S3 API :9000, web console :9001, volume booking_miniodata,
+  buckets group-photos and group-photos-test (tests) created automatically.
+  Object key: groups/<group_id>/<photo_id>.<jpg|png|webp>; photo IDs P-1001, P-1002, ...
+BACKEND (mounted at /api/groups/:groupId/photos, all need X-Traveller-Id)
+  GET    /             gallery: group summary, photos (presigned url + url_expires_at +
+                       can_delete), limits (remaining room)
+  POST   /             multipart: "photos" files + "captions" JSON array -> 201
+  GET    /:photoId     one photo + position, total, prev_photo_id, next_photo_id
+  DELETE /:photoId     uploader or organiser; database row first, then the file
+  Gate: group exists (404) -> member (403) -> group has a booking (409).
+  Upload rules (services/groupPhotos.service.ts):
+    - max 10 files per upload, 5 MB each, 200 photos per group, captions <= 300 chars;
+    - real type from the file's first bytes (JPEG/PNG/WebP), never the name; width/height
+      read from the image header;
+    - validate all -> store all in MinIO -> insert all rows in ONE transaction; if the insert
+      fails, the stored files are deleted again (503).
+  Multer errors (too big, too many) are turned into the usual 400 { fields: { photos } }.
+  requireTraveller runs before multer, so anonymous requests never upload a body.
+  Viewing: the bucket is private. The API returns presigned GET links (1 hour,
+  S3_LINK_TTL_SECONDS) so <img src> works without the X-Traveller-Id header; a tampered link
+  is refused by MinIO (403).
+  Files: helpers/storage/photos.helper.js (put, remove, exists, signedUrl, ensureBucket),
+  helpers/postgres/groupPhotos.helper.js, services/groupPhotos.service.ts,
+  controllers/groupPhotos.controller.ts, routes/groupPhotos.routes.js, types/groupPhotos.ts,
+  config.js (s3 settings), .env.example (S3_*), docker-compose.yml (minio).
+  Migration 20261113000014_create_group_photos.js.
+FRONTEND  features/photos/{GroupPhotosPage, PhotoDetailPage}.tsx, photoLogic.ts (+test),
+          photos.css; services/photoService.ts (FormData upload with progress); types/photo.ts;
+          GroupPage.tsx (button); App.tsx (2 routes + titles).
+STATE     Gallery in page state; new uploads are added at once (no reload); a timer fetches
+          fresh presigned links one minute before they expire; upload progress from Axios
+          onUploadProgress; previews use object URLs that are released afterwards.
+TESTS     groupPhotos.service/controller unit tests (type sniffing, sizes, captions, limits,
+          access, upload transaction + cleanup, delete rules), groupPhotos.api.test.js (real
+          uploads to the MinIO test bucket, presigned + tampered links, delete removes the file),
+          photoLogic.test.ts, Playwright photos.spec.ts.
+SETUP     cd backend && npm install && npm run db:up && npm run migrate
+          MinIO console http://localhost:9001 (booking / booking-secret).
+
+
+================================================================================
+15. FEATURE 11 - G1 MATCH FILTERS + G2 MEMBER PROFILES (2026-11-13)
+================================================================================
+
+G1 WHAT THE USER SEES (match results on /group-match)
+  "Refine results" panel above the matches:
+    - Group gender mix: Any mix / Women only / Men only / Mixed, each with a count (0 = disabled).
+      Mix = genders of the group's CURRENT members, owner included.
+    - Shared interests with the organiser: at least 2 (every match), 3, 4 ...
+    - Must share: interest chips (with counts) from the current matches; several = ALL of them.
+    - "X of Y groups", Clear filters, and "No groups match these filters" when all are filtered out.
+  Each match card shows its mix: "Women only · 1 woman", "Mixed · 2 women · 1 man".
+  Filters live in the URL (?shared=3&must=TEMPLES,STREET_FOOD&mix=WOMEN_ONLY): they survive refresh
+  and can be shared; a new search clears them.
+G1 WHY    The roadmap's last open Good-to-have; seekers with many matches need to narrow them,
+          and "women only" groups matter for safety and comfort.
+G1 HOW    GET /api/searches/:id/matches?sort=&shared=&must=&mix= (invalid values -> 400 fields).
+          Pure rules in services/matchFilters.service.ts (compositionOf, applyFilters, buildFacets);
+          the teammate's 6-rule engine (matching.service.ts) is untouched. matches.service: one extra
+          query for member genders -> rank -> facets (over ALL eligible matches) -> filter -> top 50.
+          Response adds total_unfiltered, filters, facets, composition per match.
+          Filters can only REMOVE matches: a group must still pass all 6 rules.
+G1 FRONTEND  features/group-match/MatchFiltersPanel.tsx, matchFilters.ts (URL <-> filters),
+             GroupDiscoveryPage.tsx, GroupCard.tsx (mix badge), group-match.css,
+             searchService.getMatches(searchId, sort, filters).
+G1 STATE  The URL is the state (like sort): useSearchParams -> filtersFromParams -> request key.
+
+G2 WHAT THE USER SEES
+  /travellers/:id (the X1 profile) now has "Group trips": Organising (n) and Joined (n), each trip
+  with photo, name, city, dates, seats and stage, linking to the group page.
+  On a group page, every member's name in "Who's going" links to their profile.
+G2 HOW    Public GET /api/travellers/:id/groups (like GET /api/groups/:id, no sign-in needed):
+          Group + role (OWNER/MEMBER); join requests and booking details are NOT included;
+          unknown traveller -> 404. groups.service.listTravellerGroups + one route line in
+          travellers.routes.js.
+G2 FRONTEND  features/profile/TravellerTrips.tsx (+ profile.css), groupService.listTravellerGroups,
+             TravellerProfilePage.tsx, GroupPage.tsx (member links), groups.css.
+TESTS     matchFilters.service unit tests, groups.service (listTravellerGroups) unit tests,
+          matchFilters.api.test.js, travellerGroups.api.test.js, matchFilters.test.ts (Vitest),
+          Playwright filtersAndProfiles.spec.ts. Tickets: TASK-G1-filter-matches.md,
+          TASK-G2-member-profiles.md. No migrations, no new dependencies.
+
+
+================================================================================
+16. STATE MANAGEMENT (COMPLETE PICTURE)
 ================================================================================
 
   Kind of state                 Where                                  Why
@@ -484,6 +618,14 @@ TESTS     joinRequests.service + groups.service unit tests, 5 new integration ca
   Profile votes (demo)          localStorage gtm.demo.reputation-      Per viewer, this
                                 votes.v1                               browser only
   Chat updates                  4-second polling + mergeMessages()     No websockets needed
+  Photo links (X4)              Gallery page state + timer that        Private bucket; links
+                                re-fetches 1 min before expiry         expire after 1 hour
+  Upload progress / previews    Local state, Axios onUploadProgress,   Feedback while uploading
+                                object URLs (released afterwards)
+  Booking split after removal   Hotel store reloaded (useGroupHotel-   New per-person share
+                                Store.load)                            shows everywhere
+  Photo files                   MinIO bucket group-photos              Files outside Postgres
+  Match filters (G1)            URL params shared / must / mix         Refresh-safe, shareable
   Forms                         React Hook Form (local)                Validation + errors
   Truth for everything real     PostgreSQL                             Survives refresh and
                                                                        restart
@@ -493,7 +635,7 @@ TESTS     joinRequests.service + groups.service unit tests, 5 new integration ca
 
 
 ================================================================================
-14. DATABASE TABLES AND MIGRATIONS ADIL ADDED
+17. DATABASE TABLES AND MIGRATIONS ADIL ADDED
 ================================================================================
 
   Migration file                                      Adds
@@ -504,29 +646,41 @@ TESTS     joinRequests.service + groups.service unit tests, 5 new integration ca
   20261113000009_join_requests_removed_status.js      REMOVED status
   20261113000010_create_group_chat.js                 group_chats, chat_messages,
                                                       chat_poll_options, chat_poll_votes
+  20261113000013_join_request_lifecycle.js            CANCELLED / LEFT / CLOSED statuses,
+                                                      join_requests.message (note)
+  20261113000014_create_group_photos.js               group_photos (+ sequence P-1001)
+  (storage, not a migration)                          MinIO buckets group-photos(-test)
 
   Teammate's migrations in between: 05 group IDs, 06 searches, 08 hotels/bookings,
   11-12 reviews (pgvector).
 
 
 ================================================================================
-15. FILES ADIL MAINLY CHANGED
+18. FILES ADIL MAINLY CHANGED
 ================================================================================
 
 BACKEND
-  src/routes/        travellers, interests, joinRequests, groupChat (.routes.js);
-                     groups.routes.js (join-requests + remove member); index.js (mounting)
-  src/controllers/   travellers, joinRequests, groupChat (.controller.ts); groups.controller.ts
-  src/services/      travellers, joinRequests, groupChat (.service.ts); groups.service.ts
-  src/helpers/postgres/ travellers, joinRequests, groupChat (.helper.js); groups.helper.js
-                     (lockById, addMember, removeMember)
-  src/validation/    travellers.validation.ts, groupChat.validation.ts
-  src/types/         traveller.ts, joinRequest.ts, groupChat.ts
+  src/routes/        travellers, interests, joinRequests, groupChat, groupPhotos (.routes.js);
+                     groups.routes.js (join-requests, remove member, leave); index.js (mounting)
+  src/controllers/   travellers, joinRequests, groupChat, groupPhotos (.controller.ts);
+                     groups.controller.ts
+  src/services/      travellers, joinRequests, groupChat, groupPhotos, matchFilters (.service.ts);
+                     matches.service.ts (G1 filters/facets);
+                     groups.service.ts (removeMember, leaveGroup, endMembership,
+                     listTravellerGroups)
+  src/helpers/postgres/ travellers, joinRequests, groupChat, groupPhotos (.helper.js);
+                     groups.helper.js (lockById, addMember, removeMember);
+                     groupHotels.helper.js (updateBookingSplit)
+  src/helpers/storage/ photos.helper.js (S3 / MinIO)
+  src/validation/    travellers, groupChat, joinRequests (.validation.ts)
+  src/types/         traveller.ts, joinRequest.ts, groupChat.ts, groupPhotos.ts, group.ts
   src/middleware/    errorHandler.js (413)
-  migrations/        03, 04, 07, 09, 10
+  src/config.js      s3 settings
+  docker-compose.yml minio service;  .env.example S3_* settings
+  migrations/        03, 04, 07, 09, 10, 13, 14
   scripts/           seed-travellers.js
-  tests/             travellers.*, joinRequests.*, groupChat.*, groups.service/controller,
-                     errorHandler, health
+  tests/             travellers.*, joinRequests.*, groupChat.*, groupPhotos.*,
+                     groups.service/controller, errorHandler, health
 
 FRONTEND
   src/features/identity/   SignupPage, LoginPage, DashboardPage, session, schemas, CopyTravellerId
@@ -534,24 +688,31 @@ FRONTEND
                            GroupPage.tsx, MyGroupsPage.tsx, groups.css
   src/features/profile/    TravellerProfilePage.tsx, profile.css
   src/features/chat/       GroupChatPage.tsx, chatLogic.ts (+test), chat.css
+  src/features/photos/     GroupPhotosPage.tsx, PhotoDetailPage.tsx, photoLogic.ts (+test),
+                           photos.css
+  src/features/group-match/ MatchFiltersPanel.tsx, matchFilters.ts (+test), GroupCard.tsx (G1)
+  src/features/profile/    TravellerTrips.tsx (G2)
   src/features/group-match/ discovery prototype pages
   src/store/               useTravellerStore.ts (+test), useDemoTravellerStore.ts
   src/services/            travellerService, joinRequestService, chatService, reputationService,
-                           groupService (removeMember), mock/reputationMock (+test),
+                           groupService (removeMember, leaveGroup), photoService,
+                           mock/reputationMock (+test),
                            mock/groupMatchMockService, groupMatchService
   src/lib/                 api.ts (+test), identityStorage.ts, useAsync.ts, format.ts
   src/components/          layout/BookingHeader.tsx, Footer.tsx, shared/common.tsx, ui/*
   src/App.tsx              routes + page titles
-  tests/ (Playwright)      joinRequests.spec.ts, profile.spec.ts, chat.spec.ts, identity specs
+  tests/ (Playwright)      joinRequests.spec.ts, memberLifecycle.spec.ts, profile.spec.ts,
+                           chat.spec.ts, photos.spec.ts, filtersAndProfiles.spec.ts, identity specs
 
 DOCS / TICKETS
   AGENTS.md, Agent.md, README.md, backend/README.md, frontend/README.md,
-  docs/PROJECT_CONTEXT.md, tasks/PLAN.md, tasks/TASK-M1, TASK-M5, TASK-X1, TASK-S1
+  docs/PROJECT_CONTEXT.md, tasks/PLAN.md, tasks/TASK-M1, TASK-M5, TASK-X1, TASK-S1, TASK-X4,
+  TASK-G1, TASK-G2
   (and the status sweep of TASK-M2), .agents/skills/frontend-features/SKILL.md
 
 
 ================================================================================
-16. TESTING (STRATEGY, FILES, LATEST RESULTS)
+19. TESTING (STRATEGY, FILES, LATEST RESULTS)
 ================================================================================
 
   Level            Tool         What
@@ -561,9 +722,13 @@ DOCS / TICKETS
   Frontend unit    Vitest       Pure logic: identity storage, vote rules, button states, chat
   End-to-end       Playwright   Real browser + real backend + real database
 
-  Latest full results (2026-11-13, before the teammate's X3 commit):
-    Backend unit 179/179, backend integration 68/68, Vitest 103/103, production build OK,
-    Playwright 21/21 for chat, join requests, hotels, profile and groups.
+  Latest results (2026-11-13, after G1 + G2):
+    Backend unit 253/253, backend integration 95/95 (includes real uploads to the MinIO test
+    bucket), Vitest 139/139, production build OK.
+    Playwright: chat, join requests, hotels, profile and groups were 21/21 before X3.
+    memberLifecycle.spec.ts, photos.spec.ts and filtersAndProfiles.spec.ts are written but not run yet (the dev database
+    needs migrations 11-14 first, see section 20).
+  Integration tests need BOTH containers running: npm run db:up (Postgres + MinIO).
   Known failing: frontend/tests/discovery.spec.ts (7 tests). It never signs in, but /group-match
   became a protected route in commit 938b633, so it lands on /login.
 
@@ -574,25 +739,33 @@ DOCS / TICKETS
 
 
 ================================================================================
-17. KNOWN LIMITATIONS / OPEN ITEMS
+20. KNOWN LIMITATIONS / OPEN ITEMS
 ================================================================================
 
   - Identity is a Traveller ID only: anyone who knows an ID can act as that traveller
     (accepted for the demo; no passwords/JWT by project rule).
   - Chat is near-real-time (4 s polling), loads only the latest 200 messages, no unread counts.
   - Profile votes, profile score and trip count are sample data saved per browser.
-  - discovery.spec.ts needs a sign-in step (see section 16).
+  - discovery.spec.ts needs a sign-in step (see section 19).
   - Database upgrade in progress on Adil's machine: the container was switched to
-    pgvector/pgvector:pg16 for the teammate's X3; still to run:
+    pgvector/pgvector:pg16 for the teammate's X3; migrations 11-14 are not applied to the dev
+    database yet, so the reviews, the request note/cancel/leave features and the photo gallery
+    don't work in the browser until you run:
       docker exec booking-postgres psql -U booking -d booking -c "REINDEX DATABASE booking"
       docker exec booking-postgres psql -U booking -d booking_test -c "REINDEX DATABASE booking_test"
       cd backend && npm run migrate
   - (Fixed 2026-11-13) Members can now leave; removal/leaving after booking re-splits the cost.
   - Re-splitting keeps the booked rooms and total; there are no refunds or room changes.
+  - MinIO image bitnamilegacy/minio:2025.4.22 gets no further updates (official images can no
+    longer be pulled): use AWS S3 or another maintained S3 service for production.
+  - Photos: no thumbnails yet (full images load in the grid) and EXIF/GPS data is not stripped.
+  - Backups now need two things: pg_dump of Postgres AND the MinIO volume (booking_miniodata).
+  - 5 lint warnings (not errors) from the teammate's stricter React rules: 4 in GroupChatPage.tsx,
+    1 in MyRequestsPage.tsx.
 
 
 ================================================================================
-18. WHAT ADIL CAN IMPROVE IN THE CURRENT IMPLEMENTATION
+21. WHAT ADIL CAN IMPROVE IN THE CURRENT IMPLEMENTATION
 ================================================================================
 
 IDENTITY (M1)
@@ -606,7 +779,7 @@ JOIN REQUESTS / MEMBERS (M5)
   5. [DONE 2026-11-13] Optional note with the request, shown to the owner.
   6. [DONE 2026-11-13] Other pending requests close automatically (CLOSED) when the group fills up.
   7. [DONE 2026-11-13] Removing/leaving after booking warns and re-splits the cost (same total).
-     Details: see FEATURE 9 below and tasks/TASK-M5-join-requests.md.
+     Details: see section 13 (Feature 9) and tasks/TASK-M5-join-requests.md.
   8. Live bell: poll /api/join-requests/incoming every 30-60 s instead of only on navigation.
 
 PROFILE (X1)
@@ -622,14 +795,22 @@ CHAT (S1)
   15. Close a poll, multi-choice polls, show who voted (optional, owner setting).
   16. Rate limiting per traveller on POST /messages to stop spam.
 
+PHOTO GALLERY (X4)
+  20. Thumbnails + strip EXIF/GPS (add "sharp"): faster grid and better privacy.
+  21. Edit captions, albums per day/city, likes and comments on photos.
+  22. "Download all" as a zip for members after the trip.
+  23. Direct browser -> MinIO uploads with presigned PUT links (needs bucket CORS) for big files.
+  24. A cleanup job that deletes orphaned files whose database row is gone.
+
 CODE QUALITY
   17. Share DTO types between backend and frontend (one types package) so they can't drift.
-  18. Move repeated "openChat / memberGroup" access checks into a shared groupAccess service.
-  19. Add an accessibility check (axe) to the Playwright runs.
+  18. Move repeated "openChat / openGallery / memberGroup" access checks into one shared
+      groupAccess service.
+  19. Add an accessibility check (axe) to the Playwright runs; fix the 5 lint warnings.
 
 
 ================================================================================
-19. NEW FEATURES THAT CAN BE ADDED
+22. NEW FEATURES THAT CAN BE ADDED
 ================================================================================
 
   1.  In-app notification centre: one table (notifications) for "request approved",
@@ -646,7 +827,7 @@ CODE QUALITY
   8.  Safety features: report a user, block a user, owner-only "women-only group" flag that
       the matching rules respect.
   9.  Email or browser push notifications for approvals and announcements.
-  10. Group photo gallery after the trip, shared with members only.
+  10. [DONE 2026-11-13] Group photo gallery shared with members only (section 14).
   11. Calendar export (.ics) of the trip dates and the hotel check-in/out.
   12. Admin/moderation dashboard: groups, reports, removed members, chat flags.
   13. Multi-language UI (English/Hindi) using the existing language button in the header.
@@ -655,12 +836,14 @@ CODE QUALITY
 
 
 ================================================================================
-20. HOW TO RUN AND VERIFY
+23. HOW TO RUN AND VERIFY
 ================================================================================
 
   Start
-    cd backend  && npm run db:up && npm run migrate && npm run dev     (http://localhost:4000)
+    cd backend  && npm install && npm run db:up && npm run migrate && npm run dev
+                                       (API http://localhost:4000; db:up starts Postgres + MinIO)
     cd frontend && npm run dev                                         (http://localhost:5173)
+    MinIO console: http://localhost:9001  (user booking / password booking-secret)
 
   Demo walk-through of Adil's features
     1. /signup -> create a traveller (gets T-025+) -> /dashboard shows the profile.
@@ -670,7 +853,11 @@ CODE QUALITY
     4. Book a hotel on the group page (teammate's M6) -> "Chat with team" unlocks.
     5. Chat: send a message, post an announcement, create a poll; as Priya vote and reply.
     6. As Sarah open Group settings -> "Only the organiser" -> Priya's composer locks.
-    7. As Sarah remove Priya -> Priya sees "Removed from group" and loses chat access.
+    7. Open "Trip photos" -> upload a photo with a caption -> open it -> Previous/Next;
+       as Sarah delete it. Check the file in the MinIO console (bucket group-photos).
+    8. As Priya "Leave group" -> the dialog shows the new per-person hotel cost -> Priya sees
+       "Ask to join again". (Or as Sarah remove Priya -> "Removed from group", no access.)
+    9. As another traveller: "Interested" with a note -> Cancel request -> Ask to join again.
 
   Health check     curl http://localhost:4000/api/health   -> {"status":"ok","db":"up"}
 

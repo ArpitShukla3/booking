@@ -69,8 +69,8 @@ More detail: [Agent.md](Agent.md) (rules, schema, endpoints, migrations) · [tas
 | M4 | Matches: all 6 rules, ranked with a score and plain-language reasons | ✅ |
 | M5 | "Interested" → owner notified → approve / reject (+ notes, cancel, leave, remove member) | ✅ |
 | M6 | Common group page: hotels for the group's city and dates, total + per-member cost, shortlist, one locked booking | ✅ |
-| G1 | Filter results by shared interests / gender composition | ❌ not done |
-| G2 | Member profile pages (interests, home city, age, ratings and reviews) | 🟡 partly (no "groups they are in" list) |
+| G1 | Filter results by shared interests / gender composition (URL filters, counts, mix badge) | ✅ |
+| G2 | Member profile pages (interests, home city, age, ratings and reviews, groups organised / joined) | ✅ |
 | S1 | Team chat for booked groups (messages, announcements, polls) | ✅ |
 | X1–X4 | Extras: traveller reviews, live trip status on My groups, **Ask the reviews** search, group photo gallery | ✅ |
 

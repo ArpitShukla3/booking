@@ -15,6 +15,7 @@ import type { Traveller } from '@/types/traveller';
 import { stagger } from '@/features/groups/media';
 import { AskReviews } from '@/features/reviews/AskReviews';
 import { scrollToReview } from '@/features/reviews/scrollToReview';
+import { TravellerTrips } from './TravellerTrips';
 import '@/features/groups/groups.css';
 import './profile.css';
 
@@ -152,6 +153,8 @@ function ProfileView({ traveller, reputation: initial }: { traveller: Traveller;
           {traveller.interests.length ? <InterestTags values={traveller.interests} highlight={shared} /> : <p className="text-muted-foreground text-sm">No interests listed</p>}
         </div>
       </section>
+
+      <TravellerTrips travellerId={traveller.traveller_id} firstName={traveller.name.split(' ')[0]} isMe={isMe} />
 
       <div className="pf-grid">
         <RatingSummary reputation={reputation} />

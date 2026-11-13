@@ -50,3 +50,6 @@ export interface BookingSplitChange {
 }
 /** Result of removing a member or leaving the group. */
 export interface MembershipChange extends Group { booking_update: BookingSplitChange | null }
+
+/** G2: a group on someone's public profile. */
+export interface TravellerGroup extends Group { role: 'OWNER' | 'MEMBER' }

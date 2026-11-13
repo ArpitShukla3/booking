@@ -41,3 +41,6 @@ export interface BookingSplitChange {
 }
 /** Result of removing a member or leaving: the updated group, plus the booking change if any. */
 export interface MembershipChange extends Group { booking_update: BookingSplitChange | null }
+
+/** G2: a group shown on someone's public profile (no requests or booking details). */
+export interface TravellerGroup extends Group { role: 'OWNER' | 'MEMBER' }

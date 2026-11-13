@@ -34,13 +34,35 @@ export interface MatchReasons {
   spots_left: number;
 }
 
+/** G1: gender mix of the group's current members (owner included). */
+export type CompositionKind = 'WOMEN_ONLY' | 'MEN_ONLY' | 'MIXED';
+export interface MatchComposition { female: number; male: number; kind: CompositionKind }
+
 /** One ranked match (M4). Every match passed all 6 rules in the backend. */
 export interface LiveMatch {
   group: Group;
   score: number;
   reasons: MatchReasons;
   explanations: string[];
+  composition: MatchComposition;
 }
 
-export interface MatchesResponse { search: SavedSearch; total: number; matches: LiveMatch[] }
+/** G1 filters as the backend applied them. */
+export interface MatchFilters { min_shared: number | null; must: string[]; composition: CompositionKind | null }
+export interface MatchFacets {
+  composition: Record<CompositionKind, number>;
+  interests: { interest: string; label: string; count: number }[];
+  max_shared: number;
+}
+
+export interface MatchesResponse {
+  search: SavedSearch;
+  /** After the G1 filters. */
+  total: number;
+  /** Passing the 6 rules, before filters. */
+  total_unfiltered: number;
+  filters: MatchFilters;
+  facets: MatchFacets;
+  matches: LiveMatch[];
+}
 export interface DepartureCity { airport: string; city: string }

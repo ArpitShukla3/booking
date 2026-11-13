@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api';
-import type { CreateGroupInput, Destination, Group, GroupDetails, MembershipChange, MyGroup } from '@/types/group';
+import type { CreateGroupInput, Destination, Group, GroupDetails, MembershipChange, MyGroup, TravellerGroup } from '@/types/group';
 
 /** Real backend API for M2. The traveller ID header is added by lib/api.ts. */
 export interface GroupApi {
@@ -9,6 +9,7 @@ export interface GroupApi {
   getGroup(groupId: string): Promise<GroupDetails>;
   removeMember(groupId: string, travellerId: string): Promise<MembershipChange>;
   leaveGroup(groupId: string): Promise<MembershipChange>;
+  listTravellerGroups(travellerId: string): Promise<TravellerGroup[]>;
 }
 
 let destinationsCache: Promise<Destination[]> | null = null;
@@ -28,5 +29,6 @@ export const groupService: GroupApi = {
   async removeMember(groupId, travellerId) {
     return (await apiClient.delete<MembershipChange>(`/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(travellerId)}`)).data;
   },
+  async listTravellerGroups(travellerId) { return (await apiClient.get<TravellerGroup[]>(`/api/travellers/${encodeURIComponent(travellerId)}/groups`)).data; },
   async leaveGroup(groupId) { return (await apiClient.post<MembershipChange>(`/api/groups/${encodeURIComponent(groupId)}/leave`)).data; },
 };

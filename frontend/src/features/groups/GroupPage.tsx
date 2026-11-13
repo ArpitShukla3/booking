@@ -28,7 +28,7 @@ function MemberCard({ member, isOwner, isYou, index, onRemove }: { member: Trave
       <div className="gp-member-head">
         <span className="avatar">{member.name.charAt(0)}</span>
         <div>
-          <h3>{member.name}{isYou ? ' (you)' : ''}</h3>
+          <h3><Link to={`/travellers/${member.traveller_id}`} className="gp-member-link" aria-label={`${member.name}${isYou ? ' (you)' : ''}: view profile, trips and reviews`}>{member.name}</Link>{isYou ? ' (you)' : ''}</h3>
           <p>{member.age ?? '–'} years · {member.gender === 'FEMALE' ? 'Female' : 'Male'}{isOwner ? ' · Organiser' : ''}</p>
         </div>
         {isOwner ? <Crown size={16} className="ml-auto text-[var(--search-yellow)]" aria-label="Group owner" /> : null}

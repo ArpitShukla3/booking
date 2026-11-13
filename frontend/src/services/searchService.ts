@@ -1,12 +1,12 @@
 import { apiClient } from '@/lib/api';
-import type { DepartureCity, MatchesResponse, MatchSort, SavedSearch, SearchInput } from '@/types/search';
+import type { DepartureCity, MatchesResponse, MatchFilters, MatchSort, SavedSearch, SearchInput } from '@/types/search';
 
 /** Live Group Match API (M3 search + M4 matches). The traveller header comes from lib/api.ts. */
 export interface SearchApi {
   listDepartureCities(): Promise<DepartureCity[]>;
   createSearch(input: SearchInput): Promise<SavedSearch>;
   listMySearches(): Promise<SavedSearch[]>;
-  getMatches(searchId: string, sort: MatchSort): Promise<MatchesResponse>;
+  getMatches(searchId: string, sort: MatchSort, filters?: MatchFilters): Promise<MatchesResponse>;
 }
 
 let departureCache: Promise<DepartureCity[]> | null = null;
@@ -19,7 +19,11 @@ export const searchService: SearchApi = {
   },
   async createSearch(input) { return (await apiClient.post<SavedSearch>('/api/searches', input)).data; },
   async listMySearches() { return (await apiClient.get<SavedSearch[]>('/api/searches')).data; },
-  async getMatches(searchId, sort) {
-    return (await apiClient.get<MatchesResponse>(`/api/searches/${encodeURIComponent(searchId)}/matches`, { params: { sort } })).data;
+  async getMatches(searchId, sort, filters) {
+    const params: Record<string, string> = { sort };
+    if (filters?.min_shared) params.shared = String(filters.min_shared);
+    if (filters?.must.length) params.must = filters.must.join(',');
+    if (filters?.composition) params.mix = filters.composition;
+    return (await apiClient.get<MatchesResponse>(`/api/searches/${encodeURIComponent(searchId)}/matches`, { params })).data;
   },
 };

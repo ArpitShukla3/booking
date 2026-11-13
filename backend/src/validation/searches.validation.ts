@@ -25,4 +25,14 @@ export const createSearchSchema = z.object({
 export const searchIdSchema = z.string().trim().toUpperCase().regex(/^S-\d+$/, 'Search not found');
 export const matchSortSchema = z.enum(['score', 'overlap', 'budget']).catch('score');
 
+/** G1 query filters: ?shared=3&must=TEMPLES,STREET_FOOD&mix=WOMEN_ONLY (all optional). */
+export const matchFiltersSchema = z.object({
+  shared: z.coerce.number({ error: 'Shared interests must be a number' }).int('Shared interests must be a whole number')
+    .min(2, 'Every match already shares at least 2 interests').max(16, 'There are only 16 interests').optional(),
+  must: z.string().max(400).optional()
+    .transform((v) => [...new Set((v ?? '').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean))])
+    .refine((list) => list.length <= 16 && list.every((i) => /^[A-Z_]{2,40}$/.test(i)), 'Use interest IDs such as TEMPLES,STREET_FOOD'),
+  mix: z.enum(['WOMEN_ONLY', 'MEN_ONLY', 'MIXED'], { error: 'Group mix must be WOMEN_ONLY, MEN_ONLY or MIXED' }).optional(),
+}).transform((q) => ({ min_shared: q.shared ?? null, must: q.must, composition: q.mix ?? null }));
+
 export type CreateSearchInput = z.output<typeof createSearchSchema>;

@@ -260,3 +260,24 @@ describe('groups.service.removeMember / leaveGroup', () => {
     assert.equal(remove.mock.callCount(), 0);
   });
 });
+
+describe('groups.service.listTravellerGroups (G2)', () => {
+  afterEach(() => mock.restoreAll());
+
+  it('lists owned and joined groups with the role; no private fields', async () => {
+    mock.method(travellersHelper, 'findById', async () => ({ traveller_id: 'T-002' }));
+    mock.method(groupsHelper, 'listForTraveller', async () => [row({ owner_id: 'T-002', member_ids: ['T-002'] }), row({ group_id: 'G-02', owner_id: 'T-001', member_ids: ['T-001', 'T-002'] })]);
+    mock.method(groupHotelsHelper, 'hotelStatusByGroups', async () => ({}));
+    const groups = await service.listTravellerGroups(' t-002 ');
+    assert.deepEqual(groups.map((g) => [g.group_id, g.role]), [['G-1001', 'OWNER'], ['G-02', 'MEMBER']]);
+    assert.equal('pending_requests' in groups[0], false);
+    assert.equal('booking' in groups[0], false);
+  });
+
+  it('404 for an unknown traveller', async () => {
+    mock.method(travellersHelper, 'findById', async () => undefined);
+    const list = mock.method(groupsHelper, 'listForTraveller', async () => []);
+    await assert.rejects(service.listTravellerGroups('T-9999'), (e) => e.status === 404);
+    assert.equal(list.mock.callCount(), 0);
+  });
+});

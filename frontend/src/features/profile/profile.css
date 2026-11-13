@@ -76,3 +76,20 @@
 
 /* TASK-X3: grid items may shrink below their content (the Ask the reviews box) on phones. */
 .pf-grid > * { min-width: 0; }
+
+/* G2: group trips on the profile */
+.pf-trips { margin-top: 16px; padding: 20px; }
+.pf-trips h2 { display: flex; align-items: center; gap: 8px; font-size: 18px; margin-bottom: 12px; }
+.pf-trip-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.pf-trip-cols h3 { display: flex; align-items: center; gap: 6px; font-size: 14px; margin-bottom: 8px; }
+.pf-trip-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pf-trip-link { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; color: var(--text); transition: border-color .15s, box-shadow .15s; }
+.pf-trip-link:hover { border-color: var(--action-blue); box-shadow: 0 3px 10px rgba(0,0,0,.06); }
+.pf-trip-link:focus-visible { outline: 2px solid var(--action-blue); outline-offset: 2px; }
+.pf-trip-link > .photo, .pf-trip-link > img { width: 72px; height: 72px; flex: none; border-radius: 6px; object-fit: cover; overflow: hidden; }
+.pf-trip-body { flex: 1; min-width: 0; display: grid; gap: 2px; font-size: 12px; color: var(--secondary-text); }
+.pf-trip-body strong { color: var(--action-blue); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-trip-body > span { display: inline-flex; align-items: center; gap: 4px; }
+.pf-trip-meta { gap: 6px !important; flex-wrap: wrap; }
+.pf-trip-arrow { color: var(--secondary-text); flex: none; }
+@media (max-width: 760px) { .pf-trip-cols { grid-template-columns: 1fr; } }

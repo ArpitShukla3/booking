@@ -13,7 +13,8 @@
 | [X1 Traveller profile + reviews (demo data)](TASK-X1-traveller-profile-reviews.md) | Done (frontend, mock reviews/votes) |
 | [S1 Team chat](TASK-S1-group-chat.md) | Done |
 | [X4 Group photo gallery (MinIO / S3)](TASK-X4-group-photo-gallery.md) | Implemented; acceptance pending the test run |
-| G1 filters, G2 member profiles | Not started (G2 partly covered by X1) |
+| [G1 Filter matches](TASK-G1-filter-matches.md) | Implemented; acceptance pending the test run |
+| [G2 Member profiles](TASK-G2-member-profiles.md) | Implemented; acceptance pending the test run |
 
 The problem statement has 6 Must-have deliverables (M1–M6). They are split into **two tracks of 3 tickets**. The split follows the two user flows in the problem statement, so each developer owns whole features end to end: DB tables, backend API, and frontend pages.
 
@@ -115,7 +116,8 @@ Errors from every endpoint: `{ "error": { "message": string, "fields"?: { [field
 | POST | `/api/searches` 🔒 | M3 | saves and returns a search |
 | GET | `/api/searches` 🔒 | M3 | my recent searches |
 | GET | `/api/searches/:id` 🔒 | M3 | |
-| GET | `/api/searches/:id/matches` 🔒 | M4 | `[{group, score, reasons}]`, ranked |
+| GET | `/api/searches/:id/matches` 🔒 | M4 | `[{group, score, reasons}]`, ranked. G1: optional `?shared=&must=&mix=`; response adds `total_unfiltered`, `filters`, `facets`, per-match `composition` |
+| GET | `/api/travellers/:id/groups` | G2 | public: groups the traveller organises / joined (`Group` + `role`) |
 
 ### Track B
 | Method | Path | Ticket | Notes |

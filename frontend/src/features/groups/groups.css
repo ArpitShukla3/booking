@@ -180,6 +180,8 @@
 .gp-leave-btn { color: hsl(var(--destructive)); }
 .gp-status--cancelled, .gp-status--left { background: #efefef; color: var(--secondary-text); }
 .gp-status--closed { background: var(--warning-bg); color: #8a5a00; }
+.gp-member-link { color: var(--action-blue); }
+.gp-member-link:hover { text-decoration: underline; }
 .gp-view-profile { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; }
 .gp-past summary { cursor: pointer; color: var(--action-blue); font-weight: 700; }
 .gp-past summary:focus-visible { outline: 2px solid var(--action-blue); outline-offset: 2px; border-radius: 3px; }
