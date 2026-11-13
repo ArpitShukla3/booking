@@ -31,6 +31,29 @@ Table names match the data files: `interests`, `travellers`, `groups`, `destinat
 
 `hotels.image` is stored as it appears in the data (e.g. `images/hotels/HOTEL-TWIN-1.jpg`). The server serves the data pack's `images/` folder at `/images`, so `http://localhost:4000/<hotel.image>` is the photo URL. Photo credits are in `images/ATTRIBUTIONS.md` of the data pack.
 
+## Tests (written before the feature code)
+
+```bash
+npm test                  # unit + integration (Postgres must be running)
+npm run test:unit         # low level: services/controllers with mocks, no DB
+npm run test:integration  # mid level: real HTTP + test DB "booking_test" (auto-created and migrated)
+```
+
+Tests live in `tests/unit/` and `tests/integration/`. The workflow and templates are in `../Agent.md` §4.2 and `.agents/skills/backend-feature/SKILL.md`.
+
+## Architecture
+
+Requests flow **router → controller → service → helper**:
+
+```
+src/routes/<f>.routes.js           method + path → controller
+src/controllers/<f>.controller.js  req → service → res (no SQL, no business rules)
+src/services/<f>.service.js        business rules, validation, transactions; throws HttpError
+src/helpers/postgres/<f>.helper.js all SQL (Knex); the only layer that touches the DB
+```
+
+`/api/health` is the reference example. The full rules are in `../Agent.md` §4.1.
+
 ## Endpoints
 
 - `GET /api/health` checks that the API and the database are up.

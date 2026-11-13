@@ -43,12 +43,23 @@ booking/
 │   ├── knexfile.js              Knex config (also sets the DATE type parser)
 │   ├── .env.example             copy to .env
 │   ├── migrations/              Knex migrations (schema + data load)
-│   └── src/
+│   ├── tests/                   test-first: unit/ (low) + integration/ (mid) (section 4.2)
+│   └── src/                     layered: router → controller → service → helper (section 4.1)
+│       ├── app.js               Express app: CORS, JSON, /images static, mounts /api, error handler
+│       ├── server.js            starts app.js on PORT, graceful shutdown
 │       ├── config.js            reads .env, resolves DATA_DIR
-│       ├── db.js                shared Knex instance; import this, never create another
-│       └── server.js            Express app (CORS, /images static, routes)
+│       ├── routes/              index.js (mounts all) + <feature>.routes.js
+│       ├── controllers/         <feature>.controller.js
+│       ├── services/            <feature>.service.js (business logic)
+│       ├── helpers/
+│       │   └── postgres/        client.js (the only Knex instance), transaction.helper.js,
+│       │                        <feature>.helper.js (all SQL lives here)
+│       ├── middleware/          errorHandler.js (+ currentTraveller.js later)
+│       └── utils/               HttpError.js, pure functions (dates, validation)
 ├── frontend/                    ← React 19 + Vite + TypeScript + Tailwind 3.4 (scaffold only)
-└── tasks/                       task notes
+├── tasks/                       PLAN.md (2-dev split) + TASK-M1…M6 tickets
+└── .agents/skills/backend-feature/SKILL.md   AI-agent skill for backend work
+                                 (also linked at .claude/skills/backend-feature)
 ```
 
 ---
@@ -84,6 +95,10 @@ To check that the backend works: `curl localhost:4000/api/health` should return 
 | `npm run migrate:status` | Show which migrations have run |
 | `npm run migrate:rollback` | Roll back **all** migrations |
 | `npm run db:reset` | **Delete the DB volume**, recreate the DB, migrate again. Data your app created is lost. |
+| `npm test` | Unit tests, then integration tests (Postgres must be running) |
+| `npm run test:unit` | Low-level tests only (no DB, ~0.2 s) |
+| `npm run test:integration` | Creates/migrates `booking_test` if needed, then the mid-level API tests |
+| `npm run test:watch` | Re-run unit tests on every file change |
 
 ### Environment variables (`backend/.env`)
 
@@ -95,6 +110,7 @@ To check that the backend works: `curl localhost:4000/api/health` should return 
 | `DB_USER` / `DB_PASSWORD` / `DB_NAME` | `booking` / `booking` / `booking` | Credentials, shared by docker-compose and Knex |
 | `DATA_DIR` | `../hackathon-problem-3-group-travel-matcher` | Path to the data pack, relative to `backend/` |
 | `CORS_ORIGIN` | `http://localhost:5173` | Comma-separated list of allowed frontend origins |
+| `DB_NAME_TEST` | `<DB_NAME>_test` | Database the tests use. Selected automatically when `NODE_ENV=test`. Tests never touch the dev DB. |
 
 `.env` is git-ignored. If you add a variable, add it to `.env.example` and to this table too.
 
@@ -115,12 +131,97 @@ To open a psql shell: `docker exec -it booking-postgres psql -U booking -d booki
 | Config | `dotenv` | Loaded once in `src/config.js` |
 
 Implemented so far:
-- `GET /api/health`: runs `select 1` against the DB.
+- `GET /api/health`: runs `select 1` against the DB (200 `{"status":"ok","db":"up"}`, or 503 when the DB is down). **This is the reference example of the 4 layers.** Copy its shape for new features.
 - `GET /images/*`: static files from `<DATA_DIR>/images` (hotel photos).
-- A JSON 404 handler and a 500 error handler.
+- A JSON 404 handler and a central error handler (`src/middleware/errorHandler.js`).
 - Graceful shutdown on SIGINT/SIGTERM (closes the DB pool).
 
 **No feature endpoints exist yet.** See the roadmap in section 9.
+
+### 4.1 Backend architecture: router → controller → service → helper
+
+Every request goes through these layers, in this order. A layer only calls the layer directly below it.
+
+```
+HTTP request
+   │
+   ▼
+routes/<feature>.routes.js          WHERE: method + path + middleware → controller function
+   │
+   ▼
+controllers/<feature>.controller.js HTTP IN/OUT: read req (params, query, body, req.traveller),
+   │                                call ONE service function, send status + JSON
+   ▼
+services/<feature>.service.js       WHAT: business rules, validation, matching, cost maths,
+   │                                permissions, transactions. Throws HttpError.
+   ▼
+helpers/postgres/<feature>.helper.js HOW DATA IS STORED: Knex/SQL queries, return plain rows
+   │
+   ▼
+PostgreSQL
+```
+
+| Layer | Allowed | Not allowed |
+|---|---|---|
+| **Router** | `router.get/post(...)`, attaching middleware (e.g. `requireTraveller`), pointing to a controller function | Any logic, any DB access |
+| **Controller** | Reading `req`, calling a service, choosing the status code, `res.json(...)` | SQL / Knex, business rules, calling helpers directly |
+| **Service** | Business logic, input validation, combining several helpers, `withTransaction(...)`, `throw new HttpError(...)`, calling other services | `req`/`res`, Knex/SQL, importing `helpers/postgres/client.js` |
+| **Helper** | Knex queries on the tables it owns; accepts an optional `trx` as its last argument; returns plain objects | HTTP status codes, business rules (e.g. "is the group full?" belongs in the service) |
+
+**Helpers are the data-access layer.** Today they live only in `helpers/postgres/`. Other data sources added later get their own folder next to it (e.g. `helpers/cache/`, `helpers/storage/`). Services then use them the same way, and swapping storage does not touch services, controllers, or routes.
+
+**`utils/` vs `helpers/`:** `utils/` holds pure functions with no I/O (date maths, `HttpError`, validators). `helpers/` is only for talking to a data store.
+
+**Naming:** one feature → four files with the same name: `groups.routes.js`, `groups.controller.js`, `groups.service.js`, `helpers/postgres/groups.helper.js`. Export plain functions (`module.exports = { createGroup, getGroup }`), not classes.
+
+**Errors:** services throw `HttpError` (`HttpError.badRequest(msg, fields)`, `.unauthorized()`, `.forbidden()`, `.notFound()`, `.conflict()`). Controllers don't catch: Express 5 sends async errors to `errorHandler`, which always returns `{ "error": { "message", "fields"? } }`. Unknown errors become 500 and are logged.
+
+**Transactions:** when two or more writes must succeed together (e.g. approve a request + add the member), the service wraps them in `withTransaction(async (trx) => { ... })` from `helpers/postgres/transaction.helper.js`, and passes `trx` to every helper call inside.
+
+**Mocking rule:** services import helpers as module objects and call `helper.fn()`. Never destructure them (`const { fn } = require(...)`), or unit tests can't mock them with `mock.method`.
+
+**Adding a feature (checklist). AI agents: use the `backend-feature` skill, which has this in full with templates:**
+1. **Write the tests first** from the ticket's acceptance criteria (section 4.2). Run them and see them fail.
+2. Migration for any new table (section 6)
+3. `helpers/postgres/<feature>.helper.js`: queries
+4. `services/<feature>.service.js`: rules + validation
+5. `controllers/<feature>.controller.js`: req → service → res
+6. `routes/<feature>.routes.js`, then **one line** in `routes/index.js`: `router.use('/<path>', require('./<feature>.routes'));`
+7. `npm test`: everything green, including the old tests
+8. Document the endpoint (section 4 / `tasks/PLAN.md` §3)
+
+### 4.2 Testing (test-first, two levels)
+
+**Rule: for every new feature or bug fix, write the tests BEFORE the code.** Run them to see them fail, then implement until they pass. Tool: Node's built-in `node:test` + `node:assert/strict`, plus `supertest` for HTTP. No other test framework.
+
+| Level | Folder | Scope | DB |
+|---|---|---|---|
+| **Low (unit)** | `tests/unit/{services,controllers,middleware,utils}/` | One function. Services with helpers mocked (`mock.method`); pure rules (matching, pricing, dates) called directly; controllers with the service mocked + `mockRes()` | none |
+| **Mid (integration)** | `tests/integration/<feature>.api.test.js` | Real HTTP request → all 4 layers → real `booking_test` DB (seeded with the data pack) | test DB |
+
+High-level tests (browser end-to-end, load) are out of scope for now.
+
+```
+backend/tests/
+├── setup/env.js               sets NODE_ENV=test (loaded with --import before tests)
+├── setup/prepare-test-db.js   creates booking_test if missing + runs migrations (auto before integration)
+├── helpers/http.js            api() and asTraveller('T-001') (adds the X-Traveller-Id header)
+├── helpers/db.js              db, truncate(...appTables), closeDb (call in after())
+├── helpers/mockRes.js         fake Express res for controller/middleware unit tests
+├── unit/                      services/, controllers/, middleware/ (+ utils/ as needed)
+└── integration/               health.api.test.js, seed-data.test.js, <feature>.api.test.js
+```
+
+What to cover:
+- **Low:** every business rule and its boundaries (e.g. 1 vs 2 shared nights, budget diff exactly 40% vs 40% + ₹1, a full group, SAME_GENDER both ways, rooms = ceil(members / max_adults)).
+- **Mid:** for each endpoint: the happy path, 400 with `fields`, 401 without `X-Traveller-Id`, 403/404/409 where relevant, and persistence (write → read back). Use the data dictionary's worked examples as expected values.
+
+Integration hygiene:
+- Clean only app-created data (`truncate('join_requests')`, or delete IDs ≥ `T-1001` / `G-1001`).
+- Never truncate data-pack tables.
+- Files run one at a time. Always `after(closeDb)`.
+
+Current suite: 11 unit + 9 integration tests (health, error handling, image serving, seed-data correctness). All pass.
 
 ---
 
@@ -175,7 +276,7 @@ Table names match the data-pack file names. Every ID is the stable text ID from 
 | `itinerary` | text | |
 | `created_at`, `updated_at` | timestamptz | |
 
-Index on `city`. `GROUPS` is a keyword in SQL, so in raw SQL write `"groups"` in quotes. Knex quotes it for you.
+Index on `city`. `GROUPS` is a non-reserved SQL keyword: `select * from groups` works in Postgres, but quoting it (`"groups"`) in raw SQL is the safe habit. Knex quotes it for you.
 
 ### `hotels` ← `data/catalog/hotels.json` (49 rows)
 | Column | Type | Notes |
@@ -325,7 +426,8 @@ Each new table goes in a **new migration** (section 6).
 ## 11. Collaboration checklist
 
 - [ ] Pull, then run `npm install` and `npm run migrate` in `backend/`
-- [ ] Put backend logic in `backend/src/` (use `src/db.js`; don't create new Knex/pg clients)
+- [ ] Tests first: write low/mid tests for the feature, see them fail, then code. `npm test` is green before every push (section 4.2).
+- [ ] Backend code follows router → controller → service → helper (section 4.1). SQL only in `helpers/postgres/`; only helpers import `helpers/postgres/client.js`. Never create another Knex/pg client.
 - [ ] Schema changes go in a new migration; never edit a pushed one; update section 5
 - [ ] New env var → update `.env.example` and section 3
 - [ ] New endpoint → add it to section 4 (or a routes table)
