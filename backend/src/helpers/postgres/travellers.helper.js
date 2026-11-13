@@ -5,6 +5,7 @@ const { dataDir } = require('../../config');
 const PROFILE_COLUMNS = ['traveller_id', 'name', 'age', 'gender', 'home_city', 'home_airport', 'interests', 'gender_preference'];
 
 function findById(travellerId, trx = db) { return trx('travellers').select(PROFILE_COLUMNS).where({ traveller_id: travellerId }).first(); }
+function findByIds(travellerIds, trx = db) { if (!travellerIds.length) return Promise.resolve([]); return trx('travellers').select(PROFILE_COLUMNS).whereIn('traveller_id', travellerIds); }
 async function insert(profile, trx = db) { const [row] = await trx('travellers').insert(profile).returning(PROFILE_COLUMNS); return row; }
 async function findInterestIds(ids, trx = db) { if (!ids.length) return []; return (await trx('interests').whereIn('interest', ids).select('interest')).map(row => row.interest); }
 function listInterests(trx = db) { return trx('interests').select('interest', 'label', 'category').orderBy('category').orderBy('label'); }
@@ -21,4 +22,4 @@ async function seedMissingTravellers(trx) {
     COALESCE((SELECT MAX(substring(traveller_id FROM '^T-([0-9]+)$')::bigint) FROM travellers), 24)
   ), true)`);
 }
-module.exports = { findById, insert, findInterestIds, listInterests, seedMissingTravellers };
+module.exports = { findById, findByIds, insert, findInterestIds, listInterests, seedMissingTravellers };

@@ -47,4 +47,37 @@ A seeker enters what trip they want. The search is saved, so the matches (M4) ca
 - Filters on the results (G1)
 
 ## Execution plan
-_To be added later._
+
+Legend: **[U]** new file · **[M]** modified. Flow: router → controller → service → helper (Postgres).
+
+```
+Frontend /group-match (signed-in only)
+  └─ POST /api/searches  (X-Traveller-Id from lib/api.ts)
+       ▼
+[M] backend/src/routes/index.js            + /searches, /departure-cities
+[U] backend/src/routes/searches.routes.js  requireTraveller on every route
+       POST / · GET / · GET /:searchId · GET /:searchId/matches (M4)
+[U] backend/src/controllers/searches.controller.ts   thin: one service call each
+[U] backend/src/services/searches.service.ts
+       createSearch: zod check (validation/searches.validation.ts) → city in destinations,
+       home city in departure_cities, interests in catalog → gender FROM PROFILE → insert
+       getSearch: 404 unless it is yours · listMySearches: latest 10
+[U] backend/src/helpers/postgres/searches.helper.js  insert / findById / listByTraveller
+[M] backend/src/helpers/postgres/lookups.helper.js   + listDepartureCities / findDepartureCity
+[U] backend/migrations/20261113000006_create_searches.js
+       searches(search_id 'S-1001'…, traveller_id FK, home_city, city FK, check_in, check_out,
+       budget_inr, interests[], gender, gender_preference, created_at) + CHECKs
+```
+
+Messages: "Only 1–20 April 2027 is available", "City not available: …", "Check-out must be after check-in", "Choose at least 2 interests…". Bad input always gets a 400 with `fields`, never a silent empty result.
+
+## Implementation record (2026-11-13)
+
+The Group Match tab used to run on a browser-side mock (local JSON, browser matching, "sample traveller"). It is now **live**:
+- `/group-match` needs a signed-in traveller. The search form (`features/group-match/forms.tsx`) loads destinations, interests and departure cities **from the API** and pre-fills from the profile or the latest saved search. Gender is shown read-only from the profile. Live nights count; backend field errors appear under each field.
+- Submit → `POST /api/searches` → URL `/group-match?search=S-1001&sort=score`. A refresh re-reads the saved search and its matches. The **Recent searches** panel re-opens earlier searches.
+- Frontend files: [U] `src/services/searchService.ts`, `src/types/search.ts`, `src/features/group-match/{searchSchema.ts,group-match.css,searchSchema.test.ts}`, `tests/search.spec.ts`. [M] `GroupDiscoveryPage.tsx`, `forms.tsx`, `GroupCard.tsx`, `App.tsx` (route protected; the old `/group-match/groups/:id` redirects to `/groups/:id`), `BookingHeader.tsx` (sample-traveller strip hidden on live pages).
+- Tests are **written, not yet run** (as requested): `backend/tests/unit/services/searches.service.test.js`, `backend/tests/integration/searches.api.test.js`, `frontend/src/features/group-match/searchSchema.test.ts`, `frontend/tests/search.spec.ts`. Compile checks only: backend `typecheck`, frontend `typecheck` / `lint` / `build` are clean.
+- `frontend/tests/discovery.spec.ts` tests the old mock (sample-traveller switcher, URL-only searches, local "Interested"). It will fail now; replace it with `tests/search.spec.ts` or delete it.
+- The mock files (`services/mock/*`, `groupMatchService.ts`, `GroupDetailsPage.tsx`) are no longer used by the discovery page. The header's sample-traveller switcher still imports them. Delete them when M5 replaces "Interested".
+

@@ -386,7 +386,13 @@ A match that breaks any rule counts as wrong at judging. Correct results matter 
 - Worked example: G-01, `RM-KYO-001-A`, 2 members, 5 nights → ₹4,760 × 1 × 5 = ₹23,800 → ₹11,900 each
 
 ### IDs for new rows
-Seeded data uses `T-###` / `G-##`. New travellers and groups need IDs that cannot collide with these. Pick one scheme and write it down here before you build M1/M2 (suggested: UUIDs, or prefixes like `T-U-<n>` / `G-U-<n>` from a sequence).
+Seeded data uses `T-###` / `G-##`. New rows get IDs from DB sequences: travellers `T-025`… (`next_traveller_id()`), groups `G-1001`… (`next_group_id()`), searches `S-1001`… (`search_id_seq`). They never collide with seeded IDs.
+
+### Identity header
+Protected endpoints read `X-Traveller-Id` in `backend/src/middleware/currentTraveller.js` only. The frontend sets it in `frontend/src/lib/api.ts` only.
+
+### Ranking
+See README "Group Match: how matching and ranking work" and `backend/src/services/matching.service.ts`.
 
 ### Money
 All amounts are whole INR integers. There is no currency conversion.

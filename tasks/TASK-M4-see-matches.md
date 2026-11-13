@@ -56,4 +56,30 @@ Also exclude groups the seeker already **owns or belongs to**.
 - Express interest / join request (M5, Track B)
 
 ## Execution plan
-_To be added later._
+
+```
+GET /api/searches/:searchId/matches?sort=score|overlap|budget   (requireTraveller)
+  [U] controllers/searches.controller.ts → getMatches
+  [U] services/matches.service.ts
+        getSearch (404 unless yours) → groups.helper.listCandidatesByCity(city)
+        (group + owner gender/preference/interests in ONE query) → matching.evaluate()
+        for each → rank → top 50 + total; labels for interest names
+  [U] services/matching.service.ts   PURE: sharedNights, budgetCompatible (integer maths,
+        exactly 40% passes), sharedInterests (owner's, de-duplicated), genderCompatible (both
+        ways), hasRoom, checkRules, score, evaluate, rank. Also excludes groups you own or are in.
+  [M] helpers/postgres/groups.helper.js  + listCandidatesByCity
+```
+
+Response: `{ search, total, matches: [{ group: Group, score, reasons: { city, shared_nights, shared_from, shared_to, budget_diff_inr, budget_diff_pct, shared_interests, gender, spots_left }, explanations: string[] }] }`
+
+### Ranking (also in README)
+Score 0–100 = **interests** min(shared, 4)/4 × 50 + **budget** (1 − diff / (40% of the lower budget)) × 30 + **overlap** (shared nights / seeker nights) × 20, rounded.
+Tie-break: more shared interests → smaller budget difference → earlier check-in → `group_id`.
+`sort=overlap` puts the most shared nights first; `sort=budget` puts the lowest group budget first. Each uses the score order as the tie-break.
+
+## Implementation record (2026-11-13)
+- Match cards show the group name, "City, Country", dates and nights, members (1/3), owner, budget, itinerary preview, shared-interest tags, score /100, and 6 reasons. Example: "5 shared nights", "Budgets 3.3% apart (₹2,000)", "2 shared interests: Temples and shrines, Street food and markets", "Same-gender preference met (both women)", "2 spots left". Cards link to `/groups/:groupId`.
+- No matches → suggestions (widen dates, add interests, adjust budget, other city) and a "Start your own group" link.
+- New M2 groups appear automatically (candidates are read from `groups`).
+- Tests **written, not yet run**: `backend/tests/unit/services/matching.service.test.js` covers every rule and every boundary listed above, the Priya × G-01 worked example, own-group exclusion and ranking ties. `backend/tests/integration/searches.api.test.js` covers Priya → G-01, a new M2 group appearing, own groups excluded, a judge-style random search where every returned match obeys all 6 rules, and sorting.
+

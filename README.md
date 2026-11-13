@@ -58,3 +58,14 @@ npm run build --prefix frontend
 npm run lint --prefix frontend
 npm run migrate:status --prefix backend
 ```
+
+## Group Match: how matching and ranking work
+
+All matching runs in the backend (`backend/src/services/matching.service.ts`). A group is shown only if **all 6 rules** pass:
+same city · ≥ 2 shared nights (the check-out day is not a night) · budgets within 40% of the lower one (exactly 40% passes) ·
+≥ 2 interests shared with the **owner** · gender preference allowed both ways · `members + 1 ≤ max_size`.
+Groups you own or are already in are never shown.
+
+**Score (0–100)** = shared interests `min(n, 4) / 4 × 50` + budget closeness `(1 − diff / (0.4 × lower budget)) × 30`
++ date overlap `shared nights / your nights × 20`, rounded.
+Ties: more shared interests → smaller budget difference → earlier check-in → group ID.

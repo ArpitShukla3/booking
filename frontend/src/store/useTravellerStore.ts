@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { travellerService } from '@/services/travellerService';
+import { setCurrentTravellerProvider } from '@/lib/api';
 import type { TravellerApi } from '@/services/travellerService';
 import type { SignupInput, Traveller } from '@/types/traveller';
 import { browserIdentityStorage, clearIdentity, readIdentity, SESSION_KEY, SEVEN_DAYS } from '@/lib/identityStorage';
@@ -86,3 +87,4 @@ export function createTravellerStore(api: TravellerApi, storage: IdentityStorage
   });
 }
 export const useTravellerStore = createTravellerStore(travellerService, browserIdentityStorage);
+setCurrentTravellerProvider(() => useTravellerStore.getState().travellerId);

@@ -1,0 +1,163 @@
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { CalendarDays, CheckCircle2, ChevronRight, Copy, Crown, Hotel, MapPin, Moon, UserPlus, UsersRound, Wallet } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { EmptyState, ErrorState, InterestTags, PageContainer, Photo } from '@/components/shared/common';
+import { ApiError } from '@/lib/api';
+import { dateLabel, money, tripDates } from '@/lib/format';
+import { useAsync } from '@/lib/useAsync';
+import { groupService } from '@/services/groupService';
+import { useTravellerStore } from '@/store/useTravellerStore';
+import type { GroupDetails } from '@/types/group';
+import type { Traveller } from '@/types/traveller';
+import { SeatBar, StagePill, TripProgress } from './parts';
+import { cityPhoto, stagger } from './media';
+import { sizeLabel } from './schema';
+import './groups.css';
+
+function MemberCard({ member, isOwner, isYou, index }: { member: Traveller; isOwner: boolean; isYou: boolean; index: number }) {
+  return (
+    <article className="gp-member gp-rise" style={stagger(index)}>
+      <div className="gp-member-head">
+        <span className="avatar">{member.name.charAt(0)}</span>
+        <div>
+          <h3>{member.name}{isYou ? ' (you)' : ''}</h3>
+          <p>{member.age ?? '–'} years · {member.gender === 'FEMALE' ? 'Female' : 'Male'}{isOwner ? ' · Organiser' : ''}</p>
+        </div>
+        {isOwner ? <Crown size={16} className="ml-auto text-[var(--search-yellow)]" aria-label="Group owner" /> : null}
+      </div>
+      <p className="icon-line" style={{ margin: 0 }}><MapPin size={14} aria-hidden="true" />{member.home_city}</p>
+      {member.interests.length ? <InterestTags values={member.interests} /> : <p className="text-muted-foreground text-sm">No interests listed</p>}
+    </article>
+  );
+}
+
+function CopyLink() {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button variant="outline" size="sm" onClick={() => {
+      void navigator.clipboard?.writeText(window.location.href).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1800); }, () => undefined);
+    }}>
+      {copied ? <CheckCircle2 size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+      {copied ? 'Link copied' : 'Copy link'}
+    </Button>
+  );
+}
+
+function DetailsSkeleton() {
+  return (
+    <div role="status" aria-label="Loading group" style={{ display: 'grid', gap: 16 }}>
+      <div className="gp-skel" style={{ height: 260 }} />
+      <div className="gp-details" style={{ marginTop: 0 }}>
+        <div className="gp-skel" style={{ height: 300 }} />
+        <div className="gp-skel" style={{ height: 300 }} />
+      </div>
+      <span className="sr-only">Loading…</span>
+    </div>
+  );
+}
+
+function GroupView({ group, created }: { group: GroupDetails; created: boolean }) {
+  const me = useTravellerStore((s) => s.travellerId);
+  const photo = cityPhoto(group.city, 1600);
+  const isOwner = me === group.owner.traveller_id;
+  const isMember = !!me && group.member_ids.includes(me);
+  return (
+    <>
+      {created ? (
+        <div className="gp-created" role="status">
+          <CheckCircle2 size={22} aria-hidden="true" />
+          <div><strong>Your group is live!</strong> Travellers searching {group.city} for these dates can now find it.</div>
+        </div>
+      ) : null}
+
+      <div className="gp-hero gp-rise" style={{ minHeight: 280 }}>
+        <Photo src={photo.src} fallback={photo.fallback} alt={`${group.city}, ${group.country_name}`} loading="eager" />
+        <div className="gp-hero-body">
+          <div className="flex gap-2 flex-wrap mb-2"><StagePill stage={group.stage} />{isOwner ? <span className="gp-role"><Crown size={13} aria-hidden="true" />You organise this trip</span> : isMember ? <span className="gp-role is-member">You’re a member</span> : null}</div>
+          <h1>{group.name}</h1>
+          <p className="flex items-center gap-1"><MapPin size={15} aria-hidden="true" />{group.city}, {group.country_name} · {photo.caption}</p>
+        </div>
+      </div>
+
+      <div className="gp-details">
+        <div>
+          <dl className="card gp-facts gp-rise" style={stagger(1)}>
+            <div className="gp-fact"><dt><CalendarDays size={13} aria-hidden="true" />Check-in</dt><dd>{dateLabel(group.check_in)}</dd></div>
+            <div className="gp-fact"><dt><CalendarDays size={13} aria-hidden="true" />Check-out</dt><dd>{dateLabel(group.check_out)}</dd></div>
+            <div className="gp-fact"><dt><Moon size={13} aria-hidden="true" />Nights</dt><dd>{group.nights}</dd></div>
+            <div className="gp-fact"><dt><Wallet size={13} aria-hidden="true" />Budget / person</dt><dd>{money(group.budget_inr)}</dd></div>
+          </dl>
+
+          <section className="card gp-section gp-rise" style={stagger(2)} aria-labelledby="itinerary-h">
+            <h2 id="itinerary-h">Proposed itinerary</h2>
+            {group.itinerary ? <p className="gp-itinerary">{group.itinerary}</p> : <p className="text-muted-foreground">The organiser hasn’t added an itinerary yet.</p>}
+          </section>
+
+          <section className="card gp-section gp-rise" style={stagger(3)} aria-labelledby="members-h">
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <h2 id="members-h" style={{ margin: 0 }}>Who’s going · {group.members_count}/{group.max_size}</h2>
+              <SeatBar members={group.members_count} max={group.max_size} />
+            </div>
+            <div className="gp-members">
+              {group.members.map((m, i) => (
+                <MemberCard key={m.traveller_id} member={m} index={i} isOwner={m.traveller_id === group.owner.traveller_id} isYou={m.traveller_id === me} />
+              ))}
+              {Array.from({ length: group.spots_left }, (_, i) => (
+                <div key={`open-${i}`} className="gp-open-seat gp-rise" style={stagger(group.members.length + i)}>
+                  <UserPlus size={22} aria-hidden="true" />
+                  <strong>Open spot</strong>
+                  <span className="text-sm">Waiting for a travel buddy</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <aside className="gp-side">
+          <div className="card gp-rise" style={stagger(2)}>
+            <h2 style={{ fontSize: 18, marginBottom: 14 }}>Trip progress</h2>
+            <TripProgress group={group} />
+          </div>
+          <div className="card gp-rise" style={stagger(3)}>
+            <div className="gp-price"><small>Approx budget per person</small><strong>{money(group.budget_inr)}</strong></div>
+            <p className="icon-line"><UsersRound size={15} aria-hidden="true" />{sizeLabel(group.max_size)} · {group.spots_left ? `${group.spots_left} spot${group.spots_left === 1 ? '' : 's'} left` : 'Group is full'}</p>
+            <p className="icon-line"><CalendarDays size={15} aria-hidden="true" />{tripDates(group.check_in, group.check_out)}</p>
+            <p className="icon-line"><Crown size={15} aria-hidden="true" />Organised by {group.owner.name}</p>
+            <div className="grid gap-2 mt-4">
+              {/* M5 adds "Interested" / pending requests here; M6 adds hotel search. */}
+              <Button disabled title="Available once the group is complete (M6)"><Hotel size={16} aria-hidden="true" />Search hotels together</Button>
+              <CopyLink />
+            </div>
+            <p className="field-hint mt-3">Hotel search and booking open on the Common Group Page.</p>
+          </div>
+        </aside>
+      </div>
+    </>
+  );
+}
+
+export default function GroupPage() {
+  const { groupId = '' } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [created] = useState(() => Boolean((location.state as { created?: boolean } | null)?.created));
+  // Drop the one-time "created" flag so a refresh doesn't show the banner again.
+  useEffect(() => { if (created) navigate(location.pathname, { replace: true, state: null }); }, [created, navigate, location.pathname]);
+  const query = useAsync(() => groupService.getGroup(groupId), `group:${groupId}`);
+  const notFound = query.error instanceof ApiError && query.error.status === 404;
+
+  return (
+    <PageContainer className="gp-page">
+      <nav className="gp-breadcrumb" aria-label="Breadcrumb">
+        <Link to="/dashboard">Home</Link><ChevronRight size={12} aria-hidden="true" />
+        <Link to="/my-groups">My groups</Link><ChevronRight size={12} aria-hidden="true" />
+        <span>{query.data?.name ?? groupId}</span>
+      </nav>
+      {query.loading ? <DetailsSkeleton />
+        : notFound ? <EmptyState title="Group not found" action={<Link className="text-link" to="/my-groups">Back to my groups</Link>}><p>There is no group with ID {groupId}.</p></EmptyState>
+        : query.error || !query.data ? <ErrorState error={query.error} retry={query.retry} />
+        : <GroupView group={query.data} created={created} />}
+    </PageContainer>
+  );
+}

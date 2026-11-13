@@ -116,9 +116,18 @@ export function BookingHeader() {
             <UsersRound size={20} aria-hidden="true" />
             Group Match<span className="new-label">New</span>
           </NavLink>
+          {account ? (
+            <NavLink
+              to="/my-groups"
+              className={({ isActive }) => `nav-item ${isActive || pathname.startsWith("/groups/") ? "active" : ""}`}
+            >
+              <Luggage size={20} aria-hidden="true" />
+              My groups
+            </NavLink>
+          ) : null}
         </nav>
       </div>
-      <div className="demo-strip" hidden={pathname === "/login" || pathname === "/signup" || pathname === "/dashboard"}>
+      <div className="demo-strip" hidden={pathname === "/login" || pathname === "/signup" || pathname === "/dashboard" || pathname.startsWith("/group-match") || pathname.startsWith("/groups") || pathname === "/my-groups"}>
         <div className="page-container">
           <span>
             Group Travel Matcher{" "}

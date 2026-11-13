@@ -1,0 +1,36 @@
+/* Live Group Match (M3/M4) additions on top of the Booking theme in src/index.css. */
+@keyframes gm-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes gm-shimmer { from { background-position: -400px 0; } to { background-position: 400px 0; } }
+@keyframes gm-pop { 0% { transform: scale(.7); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+.gm-card { animation: gm-rise .38s cubic-bezier(.2,.7,.2,1) both; transition: box-shadow .2s ease, transform .2s ease; }
+.gm-card:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,.12); }
+.gm-card > .photo { transition: transform .5s ease; }
+.gm-card:hover > .photo { transform: scale(1.04); }
+
+.gm-skel { border-radius: 6px; background: linear-gradient(90deg, #eee 0, #f7f7f7 120px, #eee 240px); background-size: 800px 100%; animation: gm-shimmer 1.2s linear infinite, gm-rise .3s ease both; }
+
+.gm-nights { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 1px 8px; border-radius: 99px; background: var(--pale-blue); color: var(--booking); font-weight: 700; animation: gm-pop .25s ease both; }
+.gm-gender-note { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--secondary-text); margin: 4px 0 12px; }
+
+.gm-recent { margin-top: 16px; padding: 14px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.gm-recent h3 { display: flex; align-items: center; gap: 6px; font-size: 14px; margin-bottom: 8px; }
+.gm-recent ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.gm-recent li { animation: gm-rise .3s ease both; }
+.gm-recent button { width: 100%; text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 8px 10px; cursor: pointer; display: grid; transition: border-color .15s, background .15s; }
+.gm-recent button:hover { border-color: var(--action-blue); background: var(--pale-blue); }
+.gm-recent button.is-active { border-color: var(--action-blue); background: var(--pale-blue); }
+.gm-recent button:focus-visible { outline: 2px solid var(--action-blue); outline-offset: 2px; }
+.gm-recent strong { color: var(--action-blue); }
+.gm-recent span { font-size: 12px; color: var(--secondary-text); }
+
+.gm-intro { display: grid; justify-items: center; text-align: center; gap: 8px; padding: 48px 24px; border: 1px dashed #a3c2ef; border-radius: 8px; background: var(--pale-blue); color: var(--booking); animation: gm-rise .4s ease both; }
+.gm-intro p { color: var(--secondary-text); max-width: 460px; }
+
+.gm-tips { list-style: none; padding: 0; margin: 12px auto 0; display: grid; gap: 8px; text-align: left; max-width: 480px; }
+.gm-tips li { display: flex; gap: 8px; align-items: flex-start; animation: gm-rise .3s ease both; }
+.gm-tips svg { color: var(--action-blue); flex-shrink: 0; margin-top: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gm-card, .gm-skel, .gm-nights, .gm-recent li, .gm-intro, .gm-tips li { animation: none !important; transition: none !important; }
+}

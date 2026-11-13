@@ -7,5 +7,9 @@ const router = Router();
 router.use('/health', require('./health.routes'));
 router.use('/travellers', require('./travellers.routes'));
 router.use('/interests', require('./interests.routes'));
+router.use('/destinations', require('./destinations.routes'));
+router.use('/groups', require('./groups.routes'));
+router.use('/departure-cities', require('./departureCities.routes'));
+router.use('/searches', require('./searches.routes'));
 
 module.exports = router;
