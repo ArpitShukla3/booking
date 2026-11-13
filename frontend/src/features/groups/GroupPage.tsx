@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { CalendarDays, CheckCircle2, ChevronRight, Copy, Crown, Hotel, MapPin, Moon, UserPlus, UsersRound, Wallet } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ChevronRight, Copy, Crown, Hotel, Loader2, MapPin, Moon, UserMinus, UserPlus, UsersRound, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Dialog } from '@/components/ui/dialog';
 import { EmptyState, ErrorState, InterestTags, PageContainer, Photo } from '@/components/shared/common';
 import { ApiError } from '@/lib/api';
 import { dateLabel, money, tripDates } from '@/lib/format';
@@ -16,7 +17,7 @@ import { cityPhoto, stagger } from './media';
 import { sizeLabel } from './schema';
 import './groups.css';
 
-function MemberCard({ member, isOwner, isYou, index }: { member: Traveller; isOwner: boolean; isYou: boolean; index: number }) {
+function MemberCard({ member, isOwner, isYou, index, onRemove }: { member: Traveller; isOwner: boolean; isYou: boolean; index: number; onRemove?: () => void }) {
   return (
     <article className="gp-member gp-rise" style={stagger(index)}>
       <div className="gp-member-head">
@@ -29,6 +30,11 @@ function MemberCard({ member, isOwner, isYou, index }: { member: Traveller; isOw
       </div>
       <p className="icon-line" style={{ margin: 0 }}><MapPin size={14} aria-hidden="true" />{member.home_city}</p>
       {member.interests.length ? <InterestTags values={member.interests} /> : <p className="text-muted-foreground text-sm">No interests listed</p>}
+      {onRemove ? (
+        <Button size="sm" variant="outline" className="gp-member-remove" onClick={onRemove} aria-label={`Remove ${member.name} from the group`}>
+          <UserMinus size={14} aria-hidden="true" />Remove
+        </Button>
+      ) : null}
     </article>
   );
 }
@@ -63,6 +69,29 @@ function GroupView({ group, created, reload }: { group: GroupDetails; created: b
   const photo = cityPhoto(group.city, 1600);
   const isOwner = me === group.owner.traveller_id;
   const isMember = !!me && group.member_ids.includes(me);
+  const [removing, setRemoving] = useState<Traveller | null>(null);
+  const [removePending, setRemovePending] = useState(false);
+  const [removeMessage, setRemoveMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  // Bumped after a removal so the owner's request list reloads (the removed request shows as "Removed").
+  const [removals, setRemovals] = useState(0);
+
+  async function removeMember(member: Traveller) {
+    if (!useTravellerStore.getState().ensureValidSession()) return;
+    setRemovePending(true);
+    setRemoveMessage(null);
+    try {
+      await groupService.removeMember(group.group_id, member.traveller_id);
+      setRemoving(null);
+      setRemoveMessage({ kind: 'ok', text: `${member.name} was removed from the group.` });
+      setRemovals((n) => n + 1);
+      await reload();
+    } catch (err) {
+      setRemoving(null);
+      setRemoveMessage({ kind: 'error', text: err instanceof Error ? err.message : 'Could not remove this member. Please try again.' });
+    } finally {
+      setRemovePending(false);
+    }
+  }
   return (
     <>
       {created ? (
@@ -95,16 +124,22 @@ function GroupView({ group, created, reload }: { group: GroupDetails; created: b
             {group.itinerary ? <p className="gp-itinerary">{group.itinerary}</p> : <p className="text-muted-foreground">The organiser hasn’t added an itinerary yet.</p>}
           </section>
 
-          {isOwner ? <OwnerRequestsSection group={group} onMembersChanged={reload} /> : null}
+          {isOwner ? <OwnerRequestsSection key={`requests-${removals}`} group={group} onMembersChanged={reload} /> : null}
 
           <section className="card gp-section gp-rise" style={stagger(3)} aria-labelledby="members-h">
             <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
               <h2 id="members-h" style={{ margin: 0 }}>Who’s going · {group.members_count}/{group.max_size}</h2>
               <SeatBar members={group.members_count} max={group.max_size} />
             </div>
+            {removeMessage ? (
+              <p role={removeMessage.kind === 'error' ? 'alert' : 'status'} className={removeMessage.kind === 'error' ? 'field-error mb-3' : 'gp-created mb-3'}>
+                {removeMessage.kind === 'ok' ? <CheckCircle2 size={18} aria-hidden="true" /> : null}{removeMessage.text}
+              </p>
+            ) : null}
             <div className="gp-members">
               {group.members.map((m, i) => (
-                <MemberCard key={m.traveller_id} member={m} index={i} isOwner={m.traveller_id === group.owner.traveller_id} isYou={m.traveller_id === me} />
+                <MemberCard key={m.traveller_id} member={m} index={i} isOwner={m.traveller_id === group.owner.traveller_id} isYou={m.traveller_id === me}
+                  onRemove={isOwner && m.traveller_id !== group.owner.traveller_id ? () => setRemoving(m) : undefined} />
               ))}
               {Array.from({ length: group.spots_left }, (_, i) => (
                 <div key={`open-${i}`} className="gp-open-seat gp-rise" style={stagger(group.members.length + i)}>
@@ -137,6 +172,17 @@ function GroupView({ group, created, reload }: { group: GroupDetails; created: b
           </div>
         </aside>
       </div>
+
+      <Dialog open={!!removing} onOpenChange={(open) => { if (!open && !removePending) setRemoving(null); }}
+        title={`Remove ${removing?.name ?? 'this member'} from the group?`}
+        description="Their spot opens up again. They will see that they were removed and won’t be able to ask to join this group again.">
+        <div className="flex flex-wrap gap-3">
+          <Button variant="outline" disabled={removePending} onClick={() => setRemoving(null)}>Keep member</Button>
+          <Button variant="destructive" disabled={removePending} onClick={() => { if (removing) void removeMember(removing); }}>
+            {removePending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <UserMinus size={14} aria-hidden="true" />}Remove member
+          </Button>
+        </div>
+      </Dialog>
     </>
   );
 }

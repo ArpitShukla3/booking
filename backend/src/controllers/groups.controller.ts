@@ -12,3 +12,6 @@ export async function listMyGroups(req: Request, res: Response) {
 export async function getGroup(req: Request, res: Response) {
   res.status(200).json(await groupsService.getGroup(String(req.params.groupId)));
 }
+export async function removeMember(req: Request, res: Response) {
+  res.status(200).json(await groupsService.removeMember((req as WithTraveller).traveller.traveller_id, String(req.params.groupId), String(req.params.travellerId)));
+}

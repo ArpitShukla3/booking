@@ -15,12 +15,13 @@ import { cityPhoto, stagger } from './media';
 import './groups.css';
 
 type Filter = 'ALL' | JoinRequestStatus;
-const FILTERS: Filter[] = ['ALL', 'PENDING', 'APPROVED', 'REJECTED'];
+const FILTERS: Filter[] = ['ALL', 'PENDING', 'APPROVED', 'REJECTED', 'REMOVED'];
 
 const STATUS_NOTE: Record<JoinRequestStatus, string> = {
   PENDING: 'Waiting for the organiser to review your request.',
   APPROVED: 'You’re in! Open the group to meet your travel buddies.',
   REJECTED: 'The organiser declined this request.',
+  REMOVED: 'The organiser removed you from this group.',
 };
 
 function RequestCard({ request, index }: { request: MyJoinRequest; index: number }) {

@@ -2,9 +2,11 @@ import groupsHelper = require('../helpers/postgres/groups.helper');
 import joinRequestsHelper = require('../helpers/postgres/joinRequests.helper');
 import lookupsHelper = require('../helpers/postgres/lookups.helper');
 import travellersHelper = require('../helpers/postgres/travellers.helper');
+import transactionHelper = require('../helpers/postgres/transaction.helper');
 import HttpError = require('../utils/HttpError');
 import { parseInput } from '../validation/travellers.validation.ts';
 import { createGroupSchema } from '../validation/groups.validation.ts';
+import type { Knex } from 'knex';
 import type { Group, GroupDetails, GroupRow, GroupStage, MyGroup } from '../types/group.ts';
 import type { Traveller } from '../types/traveller.ts';
 
@@ -87,6 +89,29 @@ async function listMyGroups(travellerId: string): Promise<MyGroup[]> {
   }));
 }
 
+/**
+ * Owner removes a member (never themselves). In one transaction: take them out of member_ids
+ * and mark their join request REMOVED, so they can't ask to join again.
+ */
+async function removeMember(ownerId: string, groupId: string, memberId: string): Promise<Group> {
+  const group = await getGroupRowOr404(groupId);
+  const travellerId = String(memberId).trim().toUpperCase();
+  if (group.owner_id !== ownerId) throw HttpError.forbidden('Only the group organiser can remove members');
+  if (travellerId === group.owner_id) throw HttpError.badRequest('The organiser can’t be removed from their own group');
+  return transactionHelper.withTransaction(async (trx: Knex.Transaction) => {
+    const memberIds: string[] | undefined = await groupsHelper.removeMember(group.group_id, travellerId, trx);
+    if (!memberIds) throw HttpError.notFound('This traveller is not a member of the group');
+    await joinRequestsHelper.markRemoved(group.group_id, travellerId, trx);
+    return toGroupDto({ ...group, member_ids: memberIds });
+  }) as unknown as Promise<Group>;
+}
+
+async function getGroupRowOr404(groupId: string): Promise<GroupRow> {
+  const row: GroupRow | undefined = await groupsHelper.findById(String(groupId).trim().toUpperCase());
+  if (!row) throw HttpError.notFound('Group not found');
+  return row;
+}
+
 // Exported as one object (not ES named exports) so unit tests can mock.method() it.
-const groupsService = { nightsBetween, stageOf, toGroupDto, createGroup, getGroup, listMyGroups };
+const groupsService = { nightsBetween, stageOf, toGroupDto, createGroup, getGroup, listMyGroups, removeMember };
 export = groupsService;

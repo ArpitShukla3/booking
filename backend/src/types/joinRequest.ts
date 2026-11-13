@@ -1,10 +1,10 @@
 import type { Group } from './group.ts';
 import type { Traveller } from './traveller.ts';
 
-export type JoinRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type JoinRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED';
 
 /** Why a seeker cannot send a request right now (null = they can). */
-export type RequestBlocker = 'OWNER' | 'MEMBER' | 'FULL' | 'PENDING' | 'REJECTED' | 'APPROVED';
+export type RequestBlocker = 'OWNER' | 'MEMBER' | 'FULL' | 'PENDING' | 'REJECTED' | 'APPROVED' | 'REMOVED';
 
 /** Row returned by joinRequests.helper (plain columns). */
 export interface JoinRequestRow {

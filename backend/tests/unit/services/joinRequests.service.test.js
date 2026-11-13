@@ -33,6 +33,9 @@ describe('joinRequests.service pure rules', () => {
     assert.equal(service.requestBlocker(g01(), 'T-002', request()), 'PENDING');
     assert.equal(service.requestBlocker(g01(), 'T-002', request({ status: 'REJECTED' })), 'REJECTED');
   });
+  it('requestBlocker: a removed member cannot ask again', () => {
+    assert.equal(service.requestBlocker(g01(), 'T-002', request({ status: 'REMOVED' })), 'REMOVED');
+  });
   it('requestBlocker: a full group still reports PENDING for an existing request', () => {
     assert.equal(service.requestBlocker(g01({ max_size: 1 }), 'T-002', request()), 'PENDING');
   });

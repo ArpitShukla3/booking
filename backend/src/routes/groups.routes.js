@@ -9,4 +9,5 @@ router.get('/mine', requireTraveller, controller.listMyGroups); // before /:grou
 router.get('/:groupId', controller.getGroup);
 router.post('/:groupId/join-requests', requireTraveller, joinRequests.createRequest);
 router.get('/:groupId/join-requests', requireTraveller, joinRequests.listForGroup);
+router.delete('/:groupId/members/:travellerId', requireTraveller, controller.removeMember);
 module.exports = router;

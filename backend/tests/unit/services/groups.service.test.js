@@ -2,6 +2,7 @@ const { describe, it, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const groupsHelper = require('../../../src/helpers/postgres/groups.helper');
 const joinRequestsHelper = require('../../../src/helpers/postgres/joinRequests.helper');
+const transactionHelper = require('../../../src/helpers/postgres/transaction.helper');
 const lookupsHelper = require('../../../src/helpers/postgres/lookups.helper');
 const travellersHelper = require('../../../src/helpers/postgres/travellers.helper');
 const service = require('../../../src/services/groups.service.ts');
@@ -136,5 +137,44 @@ describe('groups.service reads', () => {
     mock.method(groupsHelper, 'listForTraveller', async () => [row()]);
     mock.method(joinRequestsHelper, 'countPendingByGroups', async () => ({}));
     assert.equal((await service.listMyGroups('T-001'))[0].pending_requests, 0);
+  });
+});
+
+describe('groups.service.removeMember', () => {
+  afterEach(() => mock.restoreAll());
+  const twoMembers = () => row({ member_ids: ['T-001', 'T-002'] });
+
+  function arrange(group = twoMembers()) {
+    mock.method(transactionHelper, 'withTransaction', async (work) => work('TRX'));
+    mock.method(groupsHelper, 'findById', async () => group);
+    const remove = mock.method(groupsHelper, 'removeMember', async (_g, id) => (group.member_ids.includes(id) ? group.member_ids.filter((m) => m !== id) : undefined));
+    const mark = mock.method(joinRequestsHelper, 'markRemoved', async () => ({ status: 'REMOVED' }));
+    return { remove, mark };
+  }
+
+  it('owner removes a member: member_ids shrink and the request is marked REMOVED in one transaction', async () => {
+    const { remove, mark } = arrange();
+    const group = await service.removeMember('T-001', 'g-1001', 't-002');
+    assert.deepEqual(remove.mock.calls[0].arguments, ['G-1001', 'T-002', 'TRX']);
+    assert.deepEqual(mark.mock.calls[0].arguments, ['G-1001', 'T-002', 'TRX']);
+    assert.deepEqual(group.member_ids, ['T-001']);
+    assert.equal(group.spots_left, 2);
+  });
+
+  it('403 for a non-owner, 400 for removing the owner, 404 for a non-member or unknown group', async () => {
+    const { remove } = arrange();
+    await assert.rejects(service.removeMember('T-002', 'G-1001', 'T-002'), (e) => e.status === 403);
+    await assert.rejects(service.removeMember('T-001', 'G-1001', 'T-001'), (e) => e.status === 400);
+    assert.equal(remove.mock.callCount(), 0);
+    await assert.rejects(service.removeMember('T-001', 'G-1001', 'T-009'), (e) => e.status === 404);
+    mock.restoreAll();
+    mock.method(groupsHelper, 'findById', async () => undefined);
+    await assert.rejects(service.removeMember('T-001', 'G-404', 'T-002'), (e) => e.status === 404);
+  });
+
+  it('does not mark the request when the traveller was not a member', async () => {
+    const { mark } = arrange();
+    await assert.rejects(service.removeMember('T-001', 'G-1001', 'T-009'));
+    assert.equal(mark.mock.callCount(), 0);
   });
 });

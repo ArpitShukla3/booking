@@ -113,3 +113,38 @@ test('My requests needs sign-in and fits a phone screen', async ({ browser, page
   const overflow = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test('owner removes a member: spot reopens and the member sees "Removed from group"', async ({ browser, request }) => {
+  const name = `Kyoto remove test ${Date.now()}`;
+  const groupId = await freshGroup(request, name);
+  const sent = await request.post(`${API}/api/groups/${groupId}/join-requests`, { headers: { 'X-Traveller-Id': 'T-002' } });
+  await request.post(`${API}/api/join-requests/${(await sent.json()).request_id}/approve`, { headers: { 'X-Traveller-Id': 'T-001' } });
+
+  const sarah = await pageAs(browser, 'T-001');
+  await sarah.goto(`/groups/${groupId}`);
+  await expect(sarah.getByText('Who’s going · 2/3')).toBeVisible();
+  await expect(sarah.getByRole('button', { name: 'Remove Sarah Thomas from the group' })).toHaveCount(0); // owner can't remove self
+  await sarah.getByRole('button', { name: 'Remove Priya Shah from the group' }).click();
+  await sarah.getByRole('dialog').getByRole('button', { name: 'Remove member' }).click();
+  await expect(sarah.getByText('Priya Shah was removed from the group.')).toBeVisible();
+  await expect(sarah.getByText('Who’s going · 1/3')).toBeVisible();
+
+  const saved = await (await request.get(`${API}/api/groups/${groupId}`)).json();
+  expect(saved.member_ids).toEqual(['T-001']);
+
+  const priya = await pageAs(browser, 'T-002');
+  await priya.goto(`/groups/${groupId}`);
+  await expect(priya.getByRole('button', { name: 'Removed from group' })).toBeDisabled();
+  await priya.goto('/my-requests');
+  await expect(priya.getByRole('article').filter({ hasText: name }).getByText('Removed', { exact: true })).toBeVisible();
+});
+
+test('members (not owners) see no Remove buttons', async ({ browser, request }) => {
+  const groupId = await freshGroup(request, `Kyoto member view ${Date.now()}`);
+  const sent = await request.post(`${API}/api/groups/${groupId}/join-requests`, { headers: { 'X-Traveller-Id': 'T-002' } });
+  await request.post(`${API}/api/join-requests/${(await sent.json()).request_id}/approve`, { headers: { 'X-Traveller-Id': 'T-001' } });
+  const priya = await pageAs(browser, 'T-002');
+  await priya.goto(`/groups/${groupId}`);
+  await expect(priya.getByText('Who’s going · 2/3')).toBeVisible();
+  await expect(priya.getByRole('button', { name: /^Remove / })).toHaveCount(0);
+});

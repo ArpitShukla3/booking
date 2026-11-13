@@ -153,6 +153,8 @@
 .gp-status--pending { background: var(--warning-bg); color: #8a5a00; }
 .gp-status--approved { background: var(--success-bg); color: var(--success); }
 .gp-status--rejected { background: #fdecec; color: hsl(var(--destructive)); }
+.gp-status--removed { background: #efefef; color: var(--secondary-text); }
+.gp-member-remove { justify-self: start; }
 .gp-requests { display: grid; gap: 12px; }
 .gp-request { border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: grid; gap: 10px; transition: box-shadow .2s ease, border-color .2s ease; }
 .gp-request.is-pending { border-color: var(--light-blue); background: var(--pale-blue); }
@@ -179,6 +181,7 @@ a.gp-badge:focus-visible { outline: 2px solid var(--action-blue); outline-offset
 .gp-interest .field-hint { margin: 0; }
 .gp-interest.is-pending button:disabled { opacity: 1; background: var(--warning-bg); color: #8a5a00; box-shadow: none; }
 .gp-interest.is-member button:disabled { opacity: 1; background: var(--success-bg); color: var(--success); box-shadow: none; }
+.gp-interest.is-removed button:disabled { opacity: 1; background: #efefef; color: var(--secondary-text); box-shadow: none; }
 .gp-interest.is-rejected button:disabled { opacity: 1; background: #fdecec; color: hsl(var(--destructive)); box-shadow: none; }
 .gp-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .gp-chip { border: 1px solid var(--line); background: #fff; padding: 6px 14px; border-radius: 99px; font-weight: 700; color: var(--secondary-text); cursor: pointer; transition: background .2s, color .2s, border-color .2s; }

@@ -125,4 +125,43 @@ describe('Join requests API (M5)', () => {
     const g = await db('groups').where({ group_id: 'G-01' }).first();
     assert.equal(g.member_ids.length, max_size);
   });
+
+  it('owner removes an approved member: spot opens, request is REMOVED, they cannot ask again', async () => {
+    const sent = await asTraveller('T-002').post('/api/groups/G-01/join-requests');
+    await asTraveller('T-001').post(`/api/join-requests/${sent.body.request_id}/approve`);
+
+    const removed = await asTraveller('T-001').delete('/api/groups/G-01/members/T-002');
+    assert.equal(removed.status, 200, JSON.stringify(removed.body));
+    assert.ok(!removed.body.member_ids.includes('T-002'));
+    assert.equal(removed.body.members_count, originalG01.length);
+
+    const g = await db('groups').where({ group_id: 'G-01' }).first();
+    assert.deepEqual(g.member_ids, originalG01);
+    assert.equal((await db('join_requests').where({ request_id: sent.body.request_id }).first()).status, 'REMOVED');
+
+    const mine = await asTraveller('T-002').get('/api/join-requests/mine');
+    assert.equal(mine.body[0].status, 'REMOVED');
+    const again = await asTraveller('T-002').post('/api/groups/G-01/join-requests');
+    assert.equal(again.status, 409);
+    assert.match(again.body.error.message, /removed/i);
+  });
+
+  it('removing a seeded member with no request row still records REMOVED', async () => {
+    await db('groups').where({ group_id: 'G-01' }).update({ member_ids: [...originalG01, 'T-010'] });
+    const res = await asTraveller('T-001').delete('/api/groups/G-01/members/T-010');
+    assert.equal(res.status, 200);
+    const row = await db('join_requests').where({ group_id: 'G-01', seeker_id: 'T-010' }).first();
+    assert.equal(row.status, 'REMOVED');
+    assert.ok(row.decided_at);
+  });
+
+  it('remove member: 403 non-owner, 400 owner, 404 non-member / unknown group, 401 without id', async () => {
+    await db('groups').where({ group_id: 'G-01' }).update({ member_ids: [...originalG01, 'T-010'] });
+    assert.equal((await asTraveller('T-010').delete('/api/groups/G-01/members/T-010')).status, 403);
+    assert.equal((await asTraveller('T-001').delete('/api/groups/G-01/members/T-001')).status, 400);
+    assert.equal((await asTraveller('T-001').delete('/api/groups/G-01/members/T-011')).status, 404);
+    assert.equal((await asTraveller('T-001').delete('/api/groups/G-424242/members/T-010')).status, 404);
+    assert.equal((await api().delete('/api/groups/G-01/members/T-010')).status, 401);
+    assert.ok((await db('groups').where({ group_id: 'G-01' }).first()).member_ids.includes('T-010'));
+  });
 });

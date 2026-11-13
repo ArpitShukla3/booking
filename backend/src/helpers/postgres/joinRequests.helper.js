@@ -73,7 +73,20 @@ async function updateStatus(requestId, status, trx = db) {
   return row;
 }
 
+/**
+ * Marks (group, traveller) as REMOVED. Seeded members have no request row, so one is created.
+ * Returns the row.
+ */
+async function markRemoved(groupId, travellerId, trx = db) {
+  const [row] = await trx('join_requests')
+    .insert({ group_id: groupId, seeker_id: travellerId, status: 'REMOVED', decided_at: trx.fn.now() })
+    .onConflict(['group_id', 'seeker_id'])
+    .merge(['status', 'decided_at'])
+    .returning(COLUMNS);
+  return row;
+}
+
 module.exports = {
   insert, findById, findByIdForUpdate, findByGroupAndSeeker, listByGroup, listBySeeker,
-  listPendingForOwner, countPendingByGroups, updateStatus,
+  listPendingForOwner, countPendingByGroups, updateStatus, markRemoved,
 };

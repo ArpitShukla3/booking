@@ -33,7 +33,14 @@ A seeker clicks **"Interested"** on a group. The group owner sees the pending re
 - Approval must **re-check the group size** at approval time. If the group became full, approval fails with a clear message.
 - Approval updates the request and `member_ids` together **in one transaction**, so the group can never go over its size.
 - One active request per (group, seeker). A repeated click must not create duplicates.
-- Membership is final once joined. There is no leave or remove step.
+- ~~Membership is final once joined.~~ **Changed 2026-11-13 (user request):** the owner can **remove a member** (see below). Members still cannot leave on their own.
+
+### Owner removes a member (added 2026-11-13)
+- On their group page the owner sees **Remove** on every member card except their own, with a confirmation dialog.
+- `DELETE /api/groups/:groupId/members/:travellerId` (owner only, 403 otherwise; 400 for the owner themselves; 404 if not a member).
+- One transaction: take the traveller out of `member_ids` (the spot opens again) and set their join request to **`REMOVED`**
+  (a row is created for seeded members that never had a request).
+- A removed traveller sees **"Removed from group"** (disabled) on the group page and **Removed** in My requests, and cannot request that group again (409).
 
 ## Acceptance criteria
 - [x] Demo Scenario B: Priya clicks Interested on G-01 → Sarah (as `T-001`) sees a badge with "1" → approves → Priya appears in the G-01 members (2/3), and G-01 shows 2/3 in matching.
@@ -49,10 +56,17 @@ A seeker clicks **"Interested"** on a group. The group owner sees the pending re
 - Migration: new file. Track B owns it.
 
 ## Out of scope
-- Waitlists, cancelling a request, leaving a group
+- Waitlists, cancelling a request, a member leaving on their own, re-inviting a removed member
 
 ## Execution plan / implementation (2026-11-13)
 - Backend: migration `20261113000007_create_join_requests.js`; `joinRequests.helper.js` → `joinRequests.service.ts` → `joinRequests.controller.ts` → `joinRequests.routes.js` (+ two routes in `groups.routes.js`). `groups.helper` gained `lockById` (SELECT … FOR UPDATE) and `addMember` (conditional `array_append`). Approval locks the group row, re-checks size and updates request + `member_ids` in one transaction.
 - Extra endpoint `GET /api/join-requests/incoming` feeds the owner notifications (header bell count, My groups panel).
 - Frontend: `joinRequestService.ts`, `features/groups/joinRequests.ts` (button state rules), `requestParts.tsx` (Interested panel, owner request cards with shared interests highlighted + decline confirmation, notifications panel), `MyRequestsPage.tsx` at `/my-requests`.
 - Tests: backend unit `joinRequests.service/controller` + updated `groups.service`, integration `joinRequests.api.test.js` (Scenario B, 409s, 403s, overflow, concurrent approvals); frontend Vitest `joinRequests.test.ts`, Playwright `tests/joinRequests.spec.ts`.
+
+### Removal follow-up (2026-11-13), tests written, not yet run
+- Migration `20261113000009_join_requests_removed_status.js` (adds `REMOVED` to the status check; `down` maps REMOVED → REJECTED).
+- Backend: `groups.helper.removeMember`, `joinRequests.helper.markRemoved`, `groups.service.removeMember`, `groups.controller.removeMember`, route in `groups.routes.js`; `REMOVED` blocker in `joinRequests.service`.
+- Frontend: Remove button + confirm on member cards (`GroupPage.tsx`), `groupService.removeMember`, `REMOVED` status label/pill/button state, My requests filter.
+- Tests: backend unit `groups.service.test.js` (removeMember), `joinRequests.service.test.js` (REMOVED blocker), `groups.controller.test.js`; integration `joinRequests.api.test.js` (3 cases); frontend `joinRequests.test.ts`; Playwright `tests/joinRequests.spec.ts` (2 cases).
+- [ ] Owner removes an approved member → spot reopens, request `REMOVED`, member sees "Removed from group" and cannot request again (tick after the tests pass).

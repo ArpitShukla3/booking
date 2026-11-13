@@ -63,4 +63,14 @@ async function addMember(groupId, travellerId, trx = db) {
   return row?.member_ids;
 }
 
-module.exports = { insert, findById, listForTraveller, listCandidatesByCity, lockById, addMember };
+/** Takes a traveller out of member_ids. Returns the new member_ids, or undefined if they weren't a member. */
+async function removeMember(groupId, travellerId, trx = db) {
+  const [row] = await trx('groups')
+    .where('group_id', groupId)
+    .whereRaw('? = ANY(member_ids)', [travellerId])
+    .update({ member_ids: trx.raw('array_remove(member_ids, ?)', [travellerId]) })
+    .returning('member_ids');
+  return row?.member_ids;
+}
+
+module.exports = { insert, findById, listForTraveller, listCandidatesByCity, lockById, addMember, removeMember };

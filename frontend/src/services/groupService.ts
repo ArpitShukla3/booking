@@ -7,6 +7,7 @@ export interface GroupApi {
   createGroup(input: CreateGroupInput): Promise<Group>;
   listMyGroups(): Promise<MyGroup[]>;
   getGroup(groupId: string): Promise<GroupDetails>;
+  removeMember(groupId: string, travellerId: string): Promise<Group>;
 }
 
 let destinationsCache: Promise<Destination[]> | null = null;
@@ -23,4 +24,7 @@ export const groupService: GroupApi = {
   },
   async listMyGroups() { return (await apiClient.get<MyGroup[]>('/api/groups/mine')).data; },
   async getGroup(groupId) { return (await apiClient.get<GroupDetails>(`/api/groups/${encodeURIComponent(groupId)}`)).data; },
+  async removeMember(groupId, travellerId) {
+    return (await apiClient.delete<Group>(`/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(travellerId)}`)).data;
+  },
 };

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BellRing, Check, CheckCircle2, Clock3, Heart, Loader2, MapPin, ShieldCheck, Sparkles, UserRound, UsersRound, X, XCircle } from 'lucide-react';
+import { BellRing, Check, CheckCircle2, Clock3, Heart, Loader2, MapPin, ShieldCheck, Sparkles, UserMinus, UserRound, UsersRound, X, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { InterestTags } from '@/components/shared/common';
@@ -14,7 +14,7 @@ import type { ProfileLinkState } from '@/features/profile/TravellerProfilePage';
 import { requestStatusLabel, seekerAction, timeAgo } from './joinRequests';
 import { stagger } from './media';
 
-const STATUS_ICON = { PENDING: Clock3, APPROVED: CheckCircle2, REJECTED: XCircle } as const;
+const STATUS_ICON = { PENDING: Clock3, APPROVED: CheckCircle2, REJECTED: XCircle, REMOVED: UserMinus } as const;
 
 export function RequestStatusPill({ status }: { status: JoinRequestStatus }) {
   const Icon = STATUS_ICON[status];
@@ -66,6 +66,7 @@ export function InterestPanel({ group }: { group: GroupDetails }) {
             : action.kind === 'PENDING' ? <Clock3 size={16} aria-hidden="true" />
             : action.kind === 'MEMBER' ? <CheckCircle2 size={16} aria-hidden="true" />
             : action.kind === 'REJECTED' ? <XCircle size={16} aria-hidden="true" />
+            : action.kind === 'REMOVED' ? <UserMinus size={16} aria-hidden="true" />
             : <Heart size={16} aria-hidden="true" />}
           {pending ? 'Sending request…' : action.label}
         </Button>

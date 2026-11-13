@@ -158,6 +158,7 @@ M5 join-request endpoints (all need `X-Traveller-Id`; `joinRequests.{routes,cont
 | POST | `/api/join-requests/:requestId/reject` | Owner only → `REJECTED` (final; seeker cannot ask again) |
 | GET | `/api/join-requests/mine` | Seeker's requests with group summary and status |
 | GET | `/api/join-requests/incoming` | Owner notifications: pending requests on all owned groups |
+| DELETE | `/api/groups/:groupId/members/:travellerId` | Owner only (403); not the owner (400); not a member (404). One transaction: `array_remove` from `member_ids` + request → `REMOVED` (blocks re-requesting) |
 
 `GET /api/groups/mine` now returns the real `pending_requests` count for owned groups.
 
@@ -312,7 +313,7 @@ Index on `city`. `GROUPS` is a non-reserved SQL keyword: `select * from groups` 
 | `request_id` | text PK | `R-1001`, `R-1002`, … from `join_request_id_seq` |
 | `group_id` | text FK → groups | ON DELETE CASCADE |
 | `seeker_id` | text FK → travellers | ON DELETE CASCADE |
-| `status` | text | CHECK `PENDING` / `APPROVED` / `REJECTED` |
+| `status` | text | CHECK `PENDING` / `APPROVED` / `REJECTED` / `REMOVED` (owner removed the member) |
 | `created_at` | timestamptz | |
 | `decided_at` | timestamptz | NULL exactly while `PENDING` (CHECK) |
 
@@ -374,6 +375,7 @@ Migrations are in `backend/migrations/` and are managed by Knex. Knex runs each 
 | `20261113000003_traveller_id_sequence.js` | Adds `traveller_id_seq`, `next_traveller_id()` and PK default; initializes beyond current numeric maximum. `down` preserves rows and removes the default/function/sequence. |
 | `20261113000004_backfill_missing_travellers.js` | Inserts missing seeds without overwriting profiles; advances sequence without rewinding. `down` deliberately preserves potentially referenced seed records. |
 | `20261113000007_create_join_requests.js` | M5: `join_requests` table + `join_request_id_seq` (IDs `R-1001`+), unique (group, seeker), status/decided_at checks. `down` drops both. |
+| `20261113000009_join_requests_removed_status.js` | Adds `REMOVED` to the `join_requests` status check. `down` converts REMOVED rows to REJECTED and restores the old check. |
 
 On a fresh database after `npm run migrate`, the row counts are: interests 16, travellers 24, groups 12, destinations 5, departure_cities 4, destination_links 8, destination_rules 1, hotels 49, rooms 125, availability 2,500.
 Traveller count grows after signup; never reset existing data to 24 rows.

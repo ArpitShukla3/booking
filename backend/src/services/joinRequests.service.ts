@@ -33,6 +33,7 @@ const BLOCKER_MESSAGES: Record<RequestBlocker, string> = {
   FULL: 'This group is full and cannot take new requests.',
   PENDING: 'You have already sent a request. The organiser will review it soon.',
   REJECTED: 'The organiser declined your request for this group.',
+  REMOVED: 'The organiser removed you from this group, so you can’t ask to join it again.',
   APPROVED: 'Your request was approved. You are already in this group.',
 };
 

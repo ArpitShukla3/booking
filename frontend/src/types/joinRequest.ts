@@ -1,7 +1,7 @@
 import type { Group } from './group';
 import type { Traveller } from './traveller';
 
-export type JoinRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type JoinRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED';
 
 /** A seeker's "Interested" request (M5) as returned by the backend. */
 export interface JoinRequest {
