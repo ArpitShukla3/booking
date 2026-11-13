@@ -56,7 +56,7 @@ booking/
 │       │                        <feature>.helper.js (all SQL lives here)
 │       ├── middleware/          errorHandler.js (+ currentTraveller.js later)
 │       └── utils/               HttpError.js, pure functions (dates, validation)
-├── frontend/                    ← React 19 + Vite + TypeScript + Tailwind 3.4 (scaffold only)
+├── frontend/                    ← React 19 + Vite + TypeScript + Tailwind 3.4 (Home + Group Match discovery demo)
 ├── tasks/                       PLAN.md (2-dev split) + TASK-M1…M6 tickets
 └── .agents/skills/backend-feature/SKILL.md   AI-agent skill for backend work
                                  (also linked at .claude/skills/backend-feature)
@@ -416,7 +416,10 @@ Each new table goes in a **new migration** (section 6).
 ## 10. Frontend (current state)
 
 - Vite + React 19 + TypeScript, Zustand for state, shadcn-style UI (`components.json`, `src/components/ui/button.tsx`), lucide icons, `@` alias → `src/`.
-- Only scaffolding exists (`useCounterStore.ts` is a placeholder). No API calls yet.
+- Home (`/`), discovery (`/group-match`), and details (`/group-match/groups/:group_id`) are implemented. The counter store remains an unused scaffold artifact.
+- This frontend-only discovery phase explicitly uses separate sample-data snapshots and a temporary pure matching utility inside `src/services/mock/`. This is an exception for the browser demo; final production matching and persistence must move to the backend. No API calls are made by these pages.
+- Zustand stores only the active sample traveller ID. Pending Interested requests persist separately in browser localStorage; no approval or booking workflow exists in this phase.
+- See `AGENTS.md`, `docs/PROJECT_CONTEXT.md`, and `frontend/README.md` for frontend architecture and checks.
 - **Tailwind is pinned to 3.4.17. Do not upgrade to v4.**
 - Dev server: `http://localhost:5173`. This origin is already allowed by backend CORS.
 - Put the API base URL in a Vite env var (for example `VITE_API_URL=http://localhost:4000`). Do not hard-code it in components.

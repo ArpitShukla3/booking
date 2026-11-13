@@ -8,7 +8,7 @@ const dbName = process.env.DB_NAME || 'booking';
 module.exports = {
   isTest,
   port: Number(process.env.PORT) || 4000,
-  corsOrigin: (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map((s) => s.trim()),
+  corsOrigin: (process.env.CORS_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173').split(',').map((s) => s.trim()),
   dataDir: path.resolve(backendRoot, process.env.DATA_DIR || '../hackathon-problem-3-group-travel-matcher'),
   db: {
     host: process.env.DB_HOST || 'localhost',

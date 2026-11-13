@@ -2,8 +2,12 @@
 
 Local development uses Node.js 24 (see `.nvmrc`) and Docker with Compose.
 Read [Agent.md](Agent.md) for project rules, the database schema, and the roadmap.
-The current app is a scaffold: the API provides a database health check and
-hotel images, and the frontend displays a starter screen.
+The frontend now has a Booking.com-inspired homepage and Group Match discovery
+with browser-local sample data. It runs independently of the API. The backend
+provides its existing health check and hotel images.
+See [project context](docs/PROJECT_CONTEXT.md) and [frontend instructions](frontend/README.md).
+
+For frontend discovery only: `nvm use && npm run dev --prefix frontend`.
 
 ## First-time setup
 
