@@ -1,0 +1,87 @@
+/* TASK-X3 "Ask the reviews": Booking-style search frame, chips and ranked passages. */
+.ar { margin: 4px 0 18px; padding: 16px; border-radius: 8px; background: var(--pale-blue); border: 1px solid var(--light-blue); }
+.ar-head h3 { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 800; color: var(--booking); }
+.ar-head p { font-size: 13px; color: var(--secondary-text); margin: 2px 0 12px; }
+
+.ar-box { position: relative; display: flex; align-items: center; gap: 4px; background: #fff; border: 4px solid var(--search-yellow); border-radius: 8px; padding: 2px; }
+.ar-box-icon { position: absolute; left: 12px; color: var(--secondary-text); pointer-events: none; }
+.ar-input { flex: 1; min-width: 0; border: 0; background: transparent; padding: 10px 8px 10px 38px; font-size: 15px; color: var(--text); }
+.ar-input:focus { outline: none; }
+.ar-box:focus-within { box-shadow: 0 0 0 2px var(--action-blue); }
+.ar-input::-webkit-search-cancel-button { display: none; }
+.ar-clear { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 99px; color: var(--secondary-text); }
+.ar-clear:hover { background: var(--neutral); }
+.ar-go { display: inline-flex; align-items: center; gap: 6px; background: var(--action-blue); color: #fff; font-weight: 700; border-radius: 4px; padding: 10px 18px; transition: background .15s; }
+.ar-go:hover { background: var(--booking); }
+.ar-clear:focus-visible, .ar-go:focus-visible, .ar-chip:focus-visible, .ar-actions button:focus-visible, .ar-recent button:focus-visible, .ar-retry:focus-visible {
+  outline: 2px solid var(--action-blue); outline-offset: 2px;
+}
+.ar-spin { animation: ar-spin .8s linear infinite; }
+@keyframes ar-spin { to { transform: rotate(360deg); } }
+
+.ar-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.ar-chip { border: 1px solid var(--line); background: #fff; color: var(--text); padding: 5px 12px; border-radius: 99px; font-size: 13px; transition: border-color .15s, background .15s, color .15s; }
+.ar-chip:hover { border-color: var(--action-blue); color: var(--action-blue); }
+.ar-chip[aria-pressed="true"] { background: var(--booking); border-color: var(--booking); color: #fff; }
+.ar-chip.is-skel { width: 130px; height: 29px; background: linear-gradient(90deg, #eef2f8, #f8fafd, #eef2f8); background-size: 200% 100%; animation: ar-shimmer 1.2s infinite; }
+
+.ar-recent { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--secondary-text); }
+.ar-recent-item { display: inline-flex; align-items: center; gap: 2px; background: #fff; border-radius: 99px; padding: 2px 4px 2px 10px; border: 1px dashed var(--line); }
+.ar-recent-item button:first-child { color: var(--action-blue); }
+.ar-recent-x { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 99px; }
+.ar-recent-x:hover { background: var(--neutral); }
+.ar-note { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--secondary-text); }
+
+.ar-results-wrap { margin-top: 12px; }
+.ar-answer, .ar-state { transition: opacity .18s; }
+.ar-answer.is-stale, .ar-state.is-stale { opacity: .55; }
+.ar-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; }
+.ar-mode { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: var(--success-bg); color: var(--success); cursor: help; }
+.ar-mode.is-bm25_only { background: var(--neutral); color: var(--secondary-text); }
+.ar-took { color: var(--secondary-text); font-size: 12px; margin-left: auto; }
+
+.ar-list { display: grid; gap: 8px; list-style: none; padding: 0; margin: 0; }
+.ar-item { display: flex; gap: 12px; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; transition: border-color .15s, box-shadow .15s; }
+.ar-item:hover { border-color: var(--light-blue); box-shadow: 0 2px 8px rgba(26, 26, 26, .08); }
+.ar-rank { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 99px; background: var(--booking); color: #fff; font-size: 13px; font-weight: 800; }
+.ar-item-body { min-width: 0; flex: 1; }
+.ar-quote { font-size: 15px; line-height: 1.45; color: var(--text); }
+.ar-quote mark, .ar-context mark { background: #fff1c2; color: inherit; border-radius: 2px; padding: 0 1px; box-shadow: inset 0 -2px 0 var(--search-yellow); }
+.ar-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--secondary-text); margin-top: 6px; }
+.ar-score { background: var(--booking); color: #fff; font-weight: 800; font-size: 12px; padding: 2px 6px; border-radius: 5px 5px 5px 0; }
+.ar-score.is-stars { background: #febb02; color: var(--text); border-radius: 5px; }
+.ar-title { font-style: italic; }
+.ar-why { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.ar-bar { width: 72px; height: 6px; border-radius: 99px; background: var(--neutral); overflow: hidden; }
+.ar-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--action-blue), var(--booking)); border-radius: inherit; transition: width .3s; }
+.ar-why-chip { font-size: 11px; font-weight: 600; color: var(--accent-ink, #00337c); background: var(--pale-blue); border: 1px solid var(--light-blue); border-radius: 4px; padding: 1px 6px; cursor: help; font-variant-numeric: tabular-nums; }
+.ar-why-chip.is-off { color: var(--secondary-text); background: transparent; border-style: dashed; }
+.ar-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
+.ar-actions button { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; color: var(--action-blue); }
+.ar-actions button:hover { text-decoration: underline; }
+.ar-actions .is-open { transform: rotate(180deg); }
+.ar-actions svg { transition: transform .2s; }
+.ar-context { margin-top: 6px; font-size: 13px; color: var(--text); background: var(--neutral); border-left: 3px solid var(--action-blue); padding: 6px 10px; border-radius: 0 4px 4px 0; }
+.ar-context small { color: var(--secondary-text); }
+
+.ar-state { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; font-size: 14px; }
+.ar-retry { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--action-blue); font-weight: 700; }
+.ar-skel { height: 92px; border-radius: 8px; background: linear-gradient(90deg, #eef2f8, #f8fafd, #eef2f8); background-size: 200% 100%; animation: ar-shimmer 1.2s infinite; }
+@keyframes ar-shimmer { to { background-position: -200% 0; } }
+
+/* "Read full review" target flash */
+.ar-flash { animation: ar-flash 1.6s ease-out; }
+@keyframes ar-flash { 0%, 30% { box-shadow: 0 0 0 3px var(--search-yellow); } 100% { box-shadow: 0 0 0 3px transparent; } }
+
+@media (max-width: 560px) {
+  .ar { padding: 12px; }
+  .ar-go { padding: 10px 12px; }
+  .ar-took { margin-left: 0; }
+  /* One swipeable row of suggestions instead of a tall stack. */
+  .ar-chips { flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; margin-inline: -12px; padding: 0 12px 2px; }
+  .ar-chips::-webkit-scrollbar { display: none; }
+  .ar-chip { flex: none; scroll-snap-align: start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ar-spin, .ar-skel, .ar-chip.is-skel, .ar-flash { animation: none; }
+}

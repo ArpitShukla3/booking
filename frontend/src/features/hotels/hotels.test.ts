@@ -5,7 +5,7 @@ import { createGroupHotelStore, entryKey } from '@/store/useGroupHotelStore';
 import type { GroupHotelApi } from '@/services/groupHotelService';
 import type { HotelOption, HotelResult, HotelSearch } from '@/types/hotel';
 import { activeFilterCount, applyFilters, DEFAULT_FILTERS, priceBounds, priceBrackets, ratingWord } from './hotelFilters';
-import { mockReviews, timeAgo } from './mockReviews';
+import { fromApi, timeAgo } from './reviewThreads';
 import { parseCredits } from './credits';
 import { tripSteps } from '@/features/groups/tripFlow';
 
@@ -16,7 +16,7 @@ const option = (over: Partial<HotelOption> = {}): HotelOption => ({
 const hotel = (over: Partial<HotelResult> = {}): HotelResult => ({
   hotel_id: 'H-1', name: 'Gion Corner Hotel', area: 'Gion', city: 'Kyoto', stars: 3, rating: 7.8, lat: 35, lng: 135,
   image: 'images/hotels/HOTEL-BUSINESS-1.jpg', check_in_from: '15:00', check_out_until: '11:00', family_friendly: false,
-  options: [option()], from_per_member_inr: 11900, ...over,
+  options: [option()], from_per_member_inr: 11900, review_count: 5, ...over,
 });
 const gion = hotel();
 const hills = hotel({ hotel_id: 'H-2', name: 'Kyoto Hills Hotel', area: 'Higashiyama', stars: 4, rating: 8.4,
@@ -52,12 +52,15 @@ describe('hotel filters (view only)', () => {
   });
 });
 
-describe('mock reviews', () => {
-  it('are deterministic per hotel and have nested comments', () => {
-    const a = mockReviews(gion);
-    expect(mockReviews(gion)).toEqual(a);
-    expect(a.length).toBeGreaterThanOrEqual(4);
-    expect(a.every((r) => r.rating >= 5 && r.rating <= 10)).toBe(true);
+describe('review threads (TASK-X3: reviews come from the API)', () => {
+  it('maps an API review to a thread and formats relative time', () => {
+    const thread = fromApi({
+      review_id: 'HTL-KYO-001-r0', author: 'Neha', author_from: 'Pune', rating: 9.2, rating_scale: 10, title: 'Quiet, clean, friendly',
+      body: 'Super quiet at night.', base_score: 12, created_at: '2026-06-01T00:00:00.000Z', travel_type: 'Couple',
+      comments: [{ id: 'c0', parentId: null, author: 'Dev', body: 'Thanks!', createdAt: '2026-06-02T00:00:00.000Z', baseScore: 1 }], trip: null, votes: null,
+    }, 'HTL-KYO-001');
+    expect(thread).toMatchObject({ id: 'HTL-KYO-001-r0', hotelId: 'HTL-KYO-001', from: 'Pune', travelType: 'Couple', baseScore: 12 });
+    expect(thread.comments).toHaveLength(1);
     expect(timeAgo('2026-11-01T00:00:00Z', Date.parse('2026-11-04T00:00:00Z'))).toBe('3 days ago');
   });
 });

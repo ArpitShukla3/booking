@@ -40,6 +40,11 @@ function findRoomStay(roomId, city, checkIn, checkOut, trx = db) {
   return stays(city, checkIn, checkOut, trx).where('r.room_id', roomId).first();
 }
 
+/** TASK-X3: one catalog hotel (undefined if unknown). */
+function findHotel(hotelId, trx = db) {
+  return trx('hotels').where({ hotel_id: hotelId }).first('hotel_id', 'name', 'area', 'city');
+}
+
 /** Shortlist rows of a group with the saver's name, oldest first. */
 function listSaved(groupId, trx = db) {
   return trx({ s: 'saved_hotel_options' })
@@ -101,4 +106,4 @@ async function hotelStatusByGroups(groupIds, trx = db) {
   return out;
 }
 
-module.exports = { hotelStatusByGroups, listRoomStays, findRoomStay, listSaved, insertSaved, deleteSaved, findBooking, insertBooking };
+module.exports = { findHotel, hotelStatusByGroups, listRoomStays, findRoomStay, listSaved, insertSaved, deleteSaved, findBooking, insertBooking };

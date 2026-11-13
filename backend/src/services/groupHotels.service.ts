@@ -1,6 +1,7 @@
 // M6 Common Group Page: hotel search for the group's city/dates, shortlist, one booking.
 import groupsHelper = require('../helpers/postgres/groups.helper');
 import groupHotelsHelper = require('../helpers/postgres/groupHotels.helper');
+import reviewsHelper = require('../helpers/postgres/reviews.helper');
 import transactionHelper = require('../helpers/postgres/transaction.helper');
 import HttpError = require('../utils/HttpError');
 import groupsService = require('./groups.service.ts');
@@ -46,7 +47,7 @@ function toOption(row: RoomStayRow, members: number, nights: number): HotelOptio
 function groupByHotel(rows: RoomStayRow[], members: number, nights: number): HotelResult[] {
   const hotels = new Map<string, HotelResult>();
   for (const row of rows) {
-    const hotel = hotels.get(row.hotel_id) ?? { ...toHotel(row), options: [], from_per_member_inr: null };
+    const hotel = hotels.get(row.hotel_id) ?? { ...toHotel(row), options: [], from_per_member_inr: null, review_count: 0 };
     const option = toOption(row, members, nights);
     hotel.options.push(option);
     if (option.available && (hotel.from_per_member_inr === null || option.per_member_inr < hotel.from_per_member_inr)) {
@@ -111,10 +112,12 @@ async function searchHotels(travellerId: string, groupId: string): Promise<Hotel
   const nights = nightsOf(group);
   const members = group.member_ids.length;
   const rows: RoomStayRow[] = await groupHotelsHelper.listRoomStays(group.city, group.check_in, group.check_out);
+  const hotels = groupByHotel(rows, members, nights);
+  const reviewCounts: Record<string, number> = await reviewsHelper.countBySubjects('HOTEL', hotels.map((h) => h.hotel_id));
   return {
     group_id: group.group_id, city: group.city, check_in: group.check_in, check_out: group.check_out,
     nights, members_count: members, budget_inr: group.budget_inr,
-    hotels: groupByHotel(rows, members, nights),
+    hotels: hotels.map((h) => ({ ...h, review_count: reviewCounts[h.hotel_id] ?? 0 })),
   };
 }
 

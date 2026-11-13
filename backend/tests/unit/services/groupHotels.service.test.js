@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const groupsHelper = require('../../../src/helpers/postgres/groups.helper');
 const groupHotelsHelper = require('../../../src/helpers/postgres/groupHotels.helper');
 const transactionHelper = require('../../../src/helpers/postgres/transaction.helper');
+const reviewsHelper = require('../../../src/helpers/postgres/reviews.helper');
 const HttpError = require('../../../src/utils/HttpError');
 const service = require('../../../src/services/groupHotels.service.ts');
 
@@ -39,8 +40,10 @@ describe('groupHotels.service access', () => {
 
 describe('groupHotels.service.searchHotels', () => {
   afterEach(() => mock.restoreAll());
+  const noReviews = () => mock.method(reviewsHelper, 'countBySubjects', async () => ({}));
 
   it('prices every room for the group and groups them by hotel', async () => {
+    noReviews();
     mock.method(groupsHelper, 'findById', async () => g01());
     const list = mock.method(groupHotelsHelper, 'listRoomStays', async () => [
       stay(),
@@ -63,6 +66,7 @@ describe('groupHotels.service.searchHotels', () => {
   });
 
   it('cheapest available per-member price is reported per hotel (null when none)', async () => {
+    noReviews();
     mock.method(groupsHelper, 'findById', async () => g01());
     mock.method(groupHotelsHelper, 'listRoomStays', async () => [
       stay({ min_rooms_left: 0 }),
@@ -71,6 +75,15 @@ describe('groupHotels.service.searchHotels', () => {
     const { hotels } = await service.searchHotels('T-001', 'G-01');
     assert.equal(hotels.find((h) => h.hotel_id === 'HTL-KYO-001').from_per_member_inr, null);
     assert.equal(hotels.find((h) => h.hotel_id === 'HTL-KYO-002').from_per_member_inr, 15000);
+  });
+
+  it('TASK-X3: each hotel carries its stored review count (0 when none), from one query', async () => {
+    mock.method(groupsHelper, 'findById', async () => g01());
+    mock.method(groupHotelsHelper, 'listRoomStays', async () => [stay(), stay({ hotel_id: 'HTL-KYO-002', room_id: 'RM-KYO-002-A' })]);
+    const counts = mock.method(reviewsHelper, 'countBySubjects', async () => ({ 'HTL-KYO-001': 5 }));
+    const { hotels } = await service.searchHotels('T-001', 'G-01');
+    assert.deepEqual(counts.mock.calls[0].arguments, ['HOTEL', ['HTL-KYO-001', 'HTL-KYO-002']]);
+    assert.deepEqual(hotels.map((h) => h.review_count), [5, 0]);
   });
 });
 

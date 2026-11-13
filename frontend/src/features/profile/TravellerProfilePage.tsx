@@ -13,6 +13,8 @@ import { useTravellerStore } from '@/store/useTravellerStore';
 import type { TravellerReputation, TravellerReview, VoteDirection, VoteTally } from '@/types/reputation';
 import type { Traveller } from '@/types/traveller';
 import { stagger } from '@/features/groups/media';
+import { AskReviews } from '@/features/reviews/AskReviews';
+import { scrollToReview } from '@/features/reviews/scrollToReview';
 import '@/features/groups/groups.css';
 import './profile.css';
 
@@ -62,7 +64,8 @@ function RatingSummary({ reputation }: { reputation: TravellerReputation }) {
   return (
     <section className="card pf-rating gp-rise" style={stagger(1)} aria-labelledby="rating-h">
       <h2 id="rating-h">Traveller rating</h2>
-      <div className="pf-rating-big">
+      {reputation.rating_count === 0 ? <p className="text-muted-foreground">No ratings yet.</p> : null}
+      <div className="pf-rating-big" hidden={reputation.rating_count === 0}>
         <strong>{reputation.rating_average.toFixed(1)}</strong>
         <div>
           <Stars value={reputation.rating_average} size={18} />
@@ -85,7 +88,7 @@ function RatingSummary({ reputation }: { reputation: TravellerReputation }) {
 
 function ReviewCard({ review, index, onVote }: { review: TravellerReview; index: number; onVote: (d: VoteDirection) => void }) {
   return (
-    <article className="pf-review gp-rise" style={stagger(index)} aria-label={`Review by ${review.author.name}`}>
+    <article id={`review-${review.review_id}`} className="pf-review gp-rise" style={stagger(index)} aria-label={`Review by ${review.author.name}`}>
       <VoteControl tally={review.votes} onVote={onVote} label={`review by ${review.author.name}`} />
       <div className="pf-review-body">
         <div className="pf-review-head">
@@ -131,7 +134,7 @@ function ProfileView({ traveller, reputation: initial }: { traveller: Traveller;
         <Link to={back.from} className="text-link pf-back"><ArrowLeft size={14} aria-hidden="true" />Back to {back.fromLabel ?? 'previous page'}</Link>
       ) : null}
 
-      <p className="pf-demo" role="note"><FlaskConical size={15} aria-hidden="true" />Ratings, reviews and votes are <b>sample data</b> for this prototype. Votes are only saved in this browser.</p>
+      <p className="pf-demo" role="note"><FlaskConical size={15} aria-hidden="true" />Ratings, reviews and votes are <b>sample data</b> for this prototype (reviews are stored on the server). Votes are only saved in this browser.</p>
 
       <section className="card pf-hero gp-rise" aria-labelledby="profile-h">
         <VoteControl tally={reputation.profile_votes} onVote={voteProfile} label={traveller.name} />
@@ -143,7 +146,7 @@ function ProfileView({ traveller, reputation: initial }: { traveller: Traveller;
             <span><MapPin size={14} aria-hidden="true" />{traveller.home_city}</span>
             <span><Plane size={14} aria-hidden="true" />{traveller.home_airport}</span>
             <span><ShieldCheck size={14} aria-hidden="true" />{traveller.gender_preference === 'SAME_GENDER' ? 'Prefers same-gender groups' : 'Happy with any group'}</span>
-            <span className="pf-quick-rating"><Star size={14} aria-hidden="true" />{reputation.rating_average.toFixed(1)} · {reputation.rating_count} reviews</span>
+            <span className="pf-quick-rating"><Star size={14} aria-hidden="true" />{reputation.rating_count ? `${reputation.rating_average.toFixed(1)} · ${reputation.rating_count} reviews` : 'No reviews yet'}</span>
           </div>
           <h2 className="pf-label">Interests{shared.length ? <small> · {shared.length} in common with you</small> : null}</h2>
           {traveller.interests.length ? <InterestTags values={traveller.interests} highlight={shared} /> : <p className="text-muted-foreground text-sm">No interests listed</p>}
@@ -164,6 +167,7 @@ function ProfileView({ traveller, reputation: initial }: { traveller: Traveller;
               </Select>
             </label>
           </div>
+          {reviews.length ? <AskReviews type="travellers" subjectId={traveller.traveller_id} subjectName={traveller.name} onOpenReview={scrollToReview} /> : null}
           {reviews.length ? (
             <div className="pf-review-list" key={sort}>
               {reviews.map((r, i) => <ReviewCard key={r.review_id} review={r} index={i} onVote={(d) => void voteReview(r, d)} />)}

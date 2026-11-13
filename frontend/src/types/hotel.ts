@@ -37,6 +37,8 @@ export interface HotelOption extends RoomSummary {
 export interface HotelResult extends HotelSummary {
   options: HotelOption[];
   from_per_member_inr: number | null;
+  /** TASK-X3: guest reviews stored for this hotel (backend). */
+  review_count: number;
 }
 
 export interface HotelSearch {

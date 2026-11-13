@@ -27,6 +27,8 @@ export interface HotelResult extends HotelSummary {
   options: HotelOption[];
   /** Cheapest available per-member price, or null when nothing is available. */
   from_per_member_inr: number | null;
+  /** TASK-X3: guest reviews stored for this hotel. */
+  review_count: number;
 }
 
 export interface HotelSearch {

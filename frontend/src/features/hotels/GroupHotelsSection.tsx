@@ -9,7 +9,6 @@ import type { GroupDetails } from '@/types/group';
 import type { Booking, HotelOption, HotelResult, HotelSearch, SavedOption } from '@/types/hotel';
 import { activeFilterCount, applyFilters, DEFAULT_FILTERS } from './hotelFilters';
 import type { HotelFilters, HotelMatch, HotelSort } from './hotelFilters';
-import { mockReviews } from './mockReviews';
 import { BookingLocked, BudgetMeter, FinaliseDialog, HotelPhoto, PriceFilter, RatingBadge, Stars } from './parts';
 import { useBusy, useGroupHotels, useHotelActions } from './useGroupHotels';
 import { stagger } from '@/features/groups/media';
@@ -196,7 +195,7 @@ const HotelCard = memo(function HotelCard({ match, index, groupId, entryKey, sea
   const { hotel, best, matching } = match;
   const busy = useBusy(entryKey, best.room_id);
   const added = useHotelReviewStore((s) => s.added[hotel.hotel_id]?.length ?? 0);
-  const reviewCount = useMemo(() => mockReviews(hotel).length, [hotel]) + added;
+  const reviewCount = (hotel.review_count ?? 0) + added;
   const href = `/groups/${groupId}/hotels/${hotel.hotel_id}`;
   const mine = Boolean(saved?.saved_by_me);
   return (

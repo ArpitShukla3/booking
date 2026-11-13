@@ -190,6 +190,21 @@ and carries `hotel_status: { shortlisted, booked }` (public-safe). `GET /api/gro
 `booking: null | { booking_id, hotel_id, hotel_name, room_name, rooms_count, nights, total_inr, per_member_inr, booked_at }`.
 The data comes from `groupHotels.helper.hotelStatusByGroups(groupIds)` (two queries for all groups, no N+1).
 
+TASK-X3 "Ask the reviews" (contextual retrieval; public, no auth). `:subjectType` is `hotels` or `travellers`.
+
+| Method | Path | Result |
+|---|---|---|
+| GET | `/api/reviews/:subjectType/:subjectId` | `{ subject, summary {count, average, scale}, reviews[] }` newest first. 404 unknown subject/type |
+| GET | `/api/reviews/:subjectType/:subjectId/questions` | Suggested questions + index status of that subject |
+| GET | `/api/reviews/:subjectType/:subjectId/search?q=&limit=` | Ranked passages: fused RRF `score`, `relevance`, `bm25 {rank, score}`, `vector {rank, similarity}`, `matched_terms`, chunk `content` + `context`, source review, `mode`. 400 for empty / >200-char `q` or `limit` outside 1–20 |
+
+**No model runs at request time (rule 5 holds).** Ollama is used only by the offline script `npm run reviews:index`
+(contexts by `gemma3:4b`, embeddings by `nomic-embed-text`), whose output `backend/data/reviews/index.json` is committed.
+At runtime: BM25 (k1 1.2, b 0.75, in memory over "context + chunk", `helpers/bm25`) and pgvector cosine search
+(`helpers/vector`) are fused with Reciprocal Rank Fusion (k 60). The query vector is a suggested question's precomputed
+embedding (`HYBRID_QUESTION`) or, for free text, the mean embedding of the top-3 BM25 chunks (`HYBRID_FEEDBACK`);
+without keyword hits on free text the answer is `BM25_ONLY` and empty. `GET /api/groups/:id/hotels` adds `review_count`.
+
 ### 4.1 Backend architecture: router → controller → service → helper
 
 Every request goes through these layers, in this order. A layer only calls the layer directly below it.
@@ -415,6 +430,16 @@ Primary key: (`room_id`, `date`).
 
 All chat tables cascade when the group or message is deleted.
 
+### Reviews + retrieval index (X3, migrations `…11`, `…12`; needs the pgvector image)
+| Table | Key columns | Notes |
+|---|---|---|
+| `reviews` | `review_id` PK (`HTL-…-r0`, `T-…-RV-1`) | `subject_type` CHECK `HOTEL`/`TRAVELLER`, `subject_id`, author, `rating` / `rating_scale` (10 or 5), `title`, `body`, `base_score`, `created_at` text, `meta` jsonb (comments / trip / votes) |
+| `review_chunks` | `chunk_id` PK (`<review_id>-k0`) | FK review (cascade), `content` (one or two sentences), `context` (model-written, or a template until indexed), `embedding vector(768)` with an HNSW cosine index, `context_model`, `embed_model` |
+| `review_questions` | `question_id` PK (`HQ-1`, `TQ-1`) | Suggested questions per subject type with a precomputed `embedding vector(768)` |
+
+Sample content (447 reviews, 816 chunks) is generated deterministically into `backend/data/reviews/corpus.json`
+(`npm run reviews:corpus`, same text and IDs as the old browser mocks). Votes/replies stay browser-local.
+
 ### Relationships
 ```
 groups.owner_id ──► travellers.traveller_id
@@ -439,6 +464,8 @@ Migrations are in `backend/migrations/` and are managed by Knex. Knex runs each 
 | `20261113000007_create_join_requests.js` | M5: `join_requests` table + `join_request_id_seq` (IDs `R-1001`+), unique (group, seeker), status/decided_at checks. `down` drops both. |
 | `20261113000008_create_group_hotels.js` | M6: `saved_hotel_options` (unique group+room+saver) and `group_bookings` (unique group, `group_booking_id_seq` → `BK-1001`+). `down` drops both tables and the sequence. |
 | `20261113000009_join_requests_removed_status.js` | Adds `REMOVED` to the `join_requests` status check. `down` converts REMOVED rows to REJECTED and restores the old check. |
+| `20261113000011_create_reviews.js` | X3: `CREATE EXTENSION vector`, `reviews`, `review_chunks` (+ HNSW index), `review_questions`. `down` drops them and the extension. |
+| `20261113000012_seed_reviews.js` | X3: loads `data/reviews/corpus.json` and, when present, `data/reviews/index.json` (contexts + embeddings). No model calls. `down` empties the three tables. |
 | `20261113000010_create_group_chat.js` | S1: `group_chats` (`C-1001`+, unique per group, access settings), `chat_messages` (`seq` from 1001 + generated `message_id` `M-…`), `chat_poll_options`, `chat_poll_votes`. `down` drops the four tables and the sequence. |
 
 On a fresh database after `npm run migrate`, the row counts are: interests 16, travellers 24, groups 12, destinations 5, departure_cities 4, destination_links 8, destination_rules 1, hotels 49, rooms 125, availability 2,500.

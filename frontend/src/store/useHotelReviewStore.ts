@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { StateStorage } from 'zustand/middleware';
-import type { Review, ReviewComment } from '@/features/hotels/mockReviews';
+import type { Review, ReviewComment } from '@/features/hotels/reviewThreads';
 
 /**
  * MOCK review interactions (user-requested: no API). Votes, new reviews and comments are

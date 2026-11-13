@@ -73,3 +73,6 @@
   .pf-avatar { width: 56px; height: 56px; font-size: 24px; }
   .pf-review-head { flex-wrap: wrap; }
 }
+
+/* TASK-X3: grid items may shrink below their content (the Ask the reviews box) on phones. */
+.pf-grid > * { min-width: 0; }

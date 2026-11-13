@@ -1,25 +1,35 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
-import { ArrowBigDown, ArrowBigUp, MessageSquare, Minus, Plus } from 'lucide-react';
+import { ArrowBigDown, ArrowBigUp, MessageSquare, Minus, Plus, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useHotelReviewStore, voteKey } from '@/store/useHotelReviewStore';
 import type { Vote } from '@/store/useHotelReviewStore';
+import { subjectKey, useReviewSearchStore } from '@/store/useReviewSearchStore';
 import { useTravellerStore } from '@/store/useTravellerStore';
 import type { HotelSummary } from '@/types/hotel';
-import { mockReviews, rankBest, timeAgo } from './mockReviews';
-import type { Review, ReviewComment } from './mockReviews';
+import { AskReviews } from '@/features/reviews/AskReviews';
+import { scrollToReview } from '@/features/reviews/scrollToReview';
+import { fromApi, rankBest, timeAgo } from './reviewThreads';
+import type { Review, ReviewComment } from './reviewThreads';
 import { ratingWord } from './hotelFilters';
 
 type SortMode = 'best' | 'top' | 'new';
+const NO_REVIEWS: Review[] = [];
 
-/** Reddit-style guest reviews. MOCK data + this browser's votes/comments (no API). */
+/**
+ * Reddit-style guest reviews. TASK-X3: reviews come from the backend (PostgreSQL) with an
+ * "Ask the reviews" search on top; votes, new reviews and replies stay in this browser.
+ */
 export function ReviewsSection({ hotel }: { hotel: HotelSummary }) {
   const me = useTravellerStore((s) => s.travellerId) ?? 'guest';
   const myName = useTravellerStore((s) => s.traveller?.name) ?? 'You';
   const votes = useHotelReviewStore((s) => s.votes);
   const added = useHotelReviewStore((s) => s.added[hotel.hotel_id]);
+  const remote = useReviewSearchStore((s) => s.reviews[subjectKey('hotels', hotel.hotel_id)]);
+  const loadReviews = useReviewSearchStore((s) => s.loadReviews);
+  useEffect(() => { void loadReviews('hotels', hotel.hotel_id); }, [hotel.hotel_id, loadReviews]);
   const [sort, setSort] = useState<SortMode>('best');
-  const base = useMemo(() => mockReviews(hotel), [hotel]);
+  const base = useMemo(() => remote?.data?.reviews.map((r) => fromApi(r, hotel.hotel_id)) ?? NO_REVIEWS, [remote?.data, hotel.hotel_id]);
   const all = useMemo(() => [...(added ?? []), ...base], [added, base]);
   const scoreOf = (id: string, baseScore: number) => baseScore + (votes[voteKey(me, id)] ?? 0);
   const sorted = [...all].sort((a, b) => {
@@ -44,11 +54,23 @@ export function ReviewsSection({ hotel }: { hotel: HotelSummary }) {
           ))}
         </div>
       </div>
-      <p className="hd-mock-note">Sample reviews for the demo. Your votes, reviews and replies are saved in this browser only.</p>
+      <p className="hd-mock-note">Sample reviews for the demo, stored on the server. Your votes, reviews and replies are saved in this browser only.</p>
+      <AskReviews type="hotels" subjectId={hotel.hotel_id} subjectName={hotel.name} onOpenReview={scrollToReview} />
       <ReviewComposer hotelId={hotel.hotel_id} author={myName} />
-      <ol className="rd-list">
-        {sorted.map((r) => <li key={r.id}><ReviewThread review={r} voter={me} author={myName} /></li>)}
-      </ol>
+      {remote?.error && !remote.data ? (
+        <div className="ar-state" role="alert">
+          <p>Could not load the reviews. {remote.error}</p>
+          <button type="button" className="ar-retry" onClick={() => void loadReviews('hotels', hotel.hotel_id, true)}><RotateCcw size={14} aria-hidden="true" />Try again</button>
+        </div>
+      ) : !remote?.data && !added?.length ? (
+        <div role="status" aria-label="Loading reviews" style={{ display: 'grid', gap: 8 }}>
+          {[0, 1, 2].map((i) => <div key={i} className="gp-skel" style={{ height: 96 }} />)}
+        </div>
+      ) : (
+        <ol className="rd-list">
+          {sorted.map((r) => <li key={r.id}><ReviewThread review={r} voter={me} author={myName} /></li>)}
+        </ol>
+      )}
     </section>
   );
 }
@@ -79,7 +101,7 @@ function ReviewThread({ review, voter, author }: { review: Review; voter: string
   const children = (parentId: string | null) => comments.filter((c) => c.parentId === parentId);
 
   return (
-    <article className={`rd-post ${review.mine ? 'is-mine' : ''}`} aria-labelledby={`${review.id}-t`}>
+    <article id={`review-${review.id}`} className={`rd-post ${review.mine ? 'is-mine' : ''}`} aria-labelledby={`${review.id}-t`}>
       <VoteColumn id={review.id} baseScore={review.baseScore} voter={voter} label={`review “${review.title}”`} />
       <div className="rd-main">
         <p className="rd-meta">

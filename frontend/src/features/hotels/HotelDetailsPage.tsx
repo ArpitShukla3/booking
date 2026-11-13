@@ -15,7 +15,6 @@ import type { HotelOption, HotelResult, HotelSearch, SavedOption } from '@/types
 import { cityPhoto } from '@/features/groups/media';
 import { BookingLocked, FinaliseDialog, RatingBadge, Stars } from './parts';
 import { ReviewsSection } from './ReviewsSection';
-import { mockReviews } from './mockReviews';
 import { roomTypeLabel } from './hotelFilters';
 import { useBusy, useGroupHotels, useHotelActions } from './useGroupHotels';
 import '@/features/groups/groups.css';
@@ -146,7 +145,7 @@ function HotelView({ groupId, groupName, hotel, search, shortlist, booking, entr
   const actions = useHotelActions(groupId);
   const [finalise, setFinalise] = useState<HotelOption | null>(null);
   const added = useHotelReviewStore((s) => s.added[hotel.hotel_id]?.length ?? 0);
-  const reviewCount = useMemo(() => mockReviews(hotel).length, [hotel]) + added;
+  const reviewCount = (hotel.review_count ?? 0) + added;
   const saved = useMemo(() => new Map(shortlist.map((s) => [s.room_id, s])), [shortlist]);
   const cheapest = hotel.options.find((o) => o.available) ?? hotel.options[0];
   const bookedHere = booking?.hotel.hotel_id === hotel.hotel_id;

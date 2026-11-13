@@ -20,7 +20,10 @@
     "test:integration": "node --import tsx --import ./tests/setup/env.js --test --test-concurrency=1 \"tests/integration/**/*.test.js\"",
     "test:watch": "node --import tsx --import ./tests/setup/env.js --test --watch \"tests/unit/**/*.test.js\"",
     "typecheck": "tsc -p tsconfig.json",
-    "seed:travellers": "node scripts/seed-travellers.js"
+    "seed:travellers": "node scripts/seed-travellers.js",
+    "reviews:corpus": "node scripts/reviews/build-corpus.js",
+    "reviews:index": "node scripts/reviews/build-index.js",
+    "reviews:apply": "node scripts/reviews/apply.js"
   },
   "engines": {
     "node": ">=22"
