@@ -1,4 +1,4 @@
-import type { Group } from '@/types/group';
+import type { Group, GroupStage, HotelStatus } from '@/types/group';
 
 export type StepState = 'done' | 'current' | 'upcoming';
 export interface TripStep { key: string; title: string; detail: string; state: StepState }
@@ -10,11 +10,16 @@ export interface TripStep { key: string; title: string; detail: string; state: S
  */
 export interface HotelProgress { shortlisted: number; bookedHotel: string | null }
 
-export function tripSteps(
-  group: Pick<Group, 'stage' | 'members_count' | 'max_size' | 'spots_left'>,
-  hotel: HotelProgress = { shortlisted: 0, bookedHotel: null },
-): TripStep[] {
-  const full = group.stage === 'LOBBY_FULL';
+type StepGroup = Pick<Group, 'stage' | 'members_count' | 'max_size' | 'spots_left'> & { hotel_status?: HotelStatus };
+
+/** Hotel progress from the backend's `hotel_status` (or none). */
+export function hotelProgressOf(group: StepGroup, bookedHotel?: string | null): HotelProgress {
+  const status = group.hotel_status;
+  return { shortlisted: status?.shortlisted ?? 0, bookedHotel: status?.booked ? bookedHotel || 'Hotel booked' : null };
+}
+
+export function tripSteps(group: StepGroup, hotel: HotelProgress = hotelProgressOf(group)): TripStep[] {
+  const full = group.members_count >= group.max_size;
   const booked = Boolean(hotel.bookedHotel);
   return [
     { key: 'posted', title: 'Group posted', detail: 'Visible to matching travellers', state: 'done' },
@@ -37,6 +42,24 @@ export function tripSteps(
   ];
 }
 
-export function stageLabel(stage: Group['stage']): string {
-  return stage === 'LOBBY_FULL' ? 'Lobby complete' : 'Lobby open';
+const STAGE_LABELS: Record<GroupStage, string> = {
+  LOBBY_OPEN: 'Lobby open',
+  LOBBY_FULL: 'Lobby complete',
+  HOTEL_SHORTLISTED: 'Hotel shortlisted',
+  BOOKED: 'Booked',
+};
+export const STAGES = Object.keys(STAGE_LABELS) as GroupStage[];
+
+export function stageLabel(stage: GroupStage): string {
+  return STAGE_LABELS[stage] ?? 'Lobby open';
+}
+
+/**
+ * The page's own fresher hotel state (after a save/book in this tab) can only move the
+ * backend stage forward, never back, so a still-loading store can't downgrade it.
+ */
+export function liveStage(group: Pick<Group, 'stage'>, hotel?: HotelProgress): GroupStage {
+  if (group.stage === 'BOOKED' || hotel?.bookedHotel) return 'BOOKED';
+  if (hotel?.shortlisted) return 'HOTEL_SHORTLISTED';
+  return group.stage;
 }

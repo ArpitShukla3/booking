@@ -3,6 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import type { StateStorage } from 'zustand/middleware';
 import { ApiError } from '@/lib/api';
 import { groupHotelService } from '@/services/groupHotelService';
+import { useMyGroupsStore } from '@/store/useMyGroupsStore';
 import type { GroupHotelApi } from '@/services/groupHotelService';
 import { DEFAULT_FILTERS } from '@/features/hotels/hotelFilters';
 import type { HotelFilters } from '@/features/hotels/hotelFilters';
@@ -64,7 +65,10 @@ export function createGroupHotelStore(api: GroupHotelApi, storage: StateStorage 
       const key = entryKey(travellerId, groupId);
       setBusy(`${key}|${roomId}`, action);
       try {
-        return await run();
+        const result = await run();
+        // TASK-X2: the trip status on My groups changed; refresh it in the background.
+        void useMyGroupsStore.getState().load(travellerId);
+        return result;
       } catch (error) {
         if (error instanceof ApiError && error.status === 409) void get().load(travellerId, groupId);
         throw error;

@@ -1,13 +1,14 @@
 import groupsHelper = require('../helpers/postgres/groups.helper');
 import joinRequestsHelper = require('../helpers/postgres/joinRequests.helper');
 import lookupsHelper = require('../helpers/postgres/lookups.helper');
+import groupHotelsHelper = require('../helpers/postgres/groupHotels.helper');
 import travellersHelper = require('../helpers/postgres/travellers.helper');
 import transactionHelper = require('../helpers/postgres/transaction.helper');
 import HttpError = require('../utils/HttpError');
 import { parseInput } from '../validation/travellers.validation.ts';
 import { createGroupSchema } from '../validation/groups.validation.ts';
 import type { Knex } from 'knex';
-import type { Group, GroupDetails, GroupRow, GroupStage, MyGroup } from '../types/group.ts';
+import type { BookingSummary, Group, GroupDetails, GroupRow, GroupStage, HotelStatus, MyGroup } from '../types/group.ts';
 import type { Traveller } from '../types/traveller.ts';
 
 /* ---------- pure rules (no I/O) ---------- */
@@ -18,12 +19,20 @@ function nightsBetween(checkIn: string, checkOut: string): number {
   return toDay(checkOut) - toDay(checkIn);
 }
 
-/** Trip progress. Hotel / booking stages are added by M6. */
-function stageOf(group: Pick<GroupRow, 'member_ids' | 'max_size'>): GroupStage {
+const NO_HOTEL: HotelStatus = { shortlisted: 0, booked: false };
+
+/** Trip progress, most advanced first: booked > hotel shortlisted > lobby full > lobby open (TASK-X2). */
+function stageOf(group: Pick<GroupRow, 'member_ids' | 'max_size'>, hotel: HotelStatus = NO_HOTEL): GroupStage {
+  if (hotel.booked) return 'BOOKED';
+  if (hotel.shortlisted > 0) return 'HOTEL_SHORTLISTED';
   return group.member_ids.length >= group.max_size ? 'LOBBY_FULL' : 'LOBBY_OPEN';
 }
 
-function toGroupDto(row: GroupRow): Group {
+type HotelActivity = { shortlisted: number; booking: BookingSummary | null };
+const toHotelStatus = (a: HotelActivity | undefined): HotelStatus =>
+  ({ shortlisted: a?.shortlisted ?? 0, booked: Boolean(a?.booking) });
+
+function toGroupDto(row: GroupRow, hotel: HotelStatus = NO_HOTEL): Group {
   return {
     group_id: row.group_id,
     name: row.name,
@@ -39,7 +48,8 @@ function toGroupDto(row: GroupRow): Group {
     itinerary: row.itinerary ?? null,
     owner: { traveller_id: row.owner_id, name: row.owner_name, gender: row.owner_gender },
     member_ids: row.member_ids,
-    stage: stageOf(row),
+    stage: stageOf(row, hotel),
+    hotel_status: { ...hotel },
   };
 }
 
@@ -75,15 +85,21 @@ async function getGroup(groupId: string): Promise<GroupDetails> {
   const byId = new Map(profiles.map((p) => [p.traveller_id, p]));
   // Keep the order of member_ids (owner first), skip ids without a profile.
   const members = row.member_ids.map((id) => byId.get(id)).filter((p): p is Traveller => Boolean(p));
-  return { ...toGroupDto(row), members };
+  // Public page: status only, never the booking ID or prices.
+  const activity: Record<string, HotelActivity> = await groupHotelsHelper.hotelStatusByGroups([row.group_id]);
+  return { ...toGroupDto(row, toHotelStatus(activity[row.group_id])), members };
 }
 
 async function listMyGroups(travellerId: string): Promise<MyGroup[]> {
   const rows: GroupRow[] = await groupsHelper.listForTraveller(travellerId);
   const owned = rows.filter((row) => row.owner_id === travellerId).map((row) => row.group_id);
-  const pending: Record<string, number> = await joinRequestsHelper.countPendingByGroups(owned);
+  const [pending, activity]: [Record<string, number>, Record<string, HotelActivity>] = await Promise.all([
+    joinRequestsHelper.countPendingByGroups(owned),
+    groupHotelsHelper.hotelStatusByGroups(rows.map((row) => row.group_id)),
+  ]);
   return rows.map((row) => ({
-    ...toGroupDto(row),
+    ...toGroupDto(row, toHotelStatus(activity[row.group_id])),
+    booking: activity[row.group_id]?.booking ?? null,
     my_role: row.owner_id === travellerId ? 'OWNER' : 'MEMBER',
     pending_requests: row.owner_id === travellerId ? pending[row.group_id] ?? 0 : 0,
   }));

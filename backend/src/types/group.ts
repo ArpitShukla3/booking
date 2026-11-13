@@ -1,6 +1,16 @@
 import type { Traveller } from './traveller.ts';
 
-export type GroupStage = 'LOBBY_OPEN' | 'LOBBY_FULL';
+/** Most advanced first: BOOKED > HOTEL_SHORTLISTED > LOBBY_FULL > LOBBY_OPEN (TASK-X2). */
+export type GroupStage = 'LOBBY_OPEN' | 'LOBBY_FULL' | 'HOTEL_SHORTLISTED' | 'BOOKED';
+
+/** Public-safe hotel progress on every Group DTO (no prices, no booking ID). */
+export interface HotelStatus { shortlisted: number; booked: boolean }
+
+/** Booking summary for members on My groups. */
+export interface BookingSummary {
+  booking_id: string; hotel_id: string; hotel_name: string; room_name: string;
+  rooms_count: number; nights: number; total_inr: number; per_member_inr: number; booked_at: string;
+}
 
 /** Row returned by groups.helper (joined with destinations + owner). */
 export interface GroupRow {
@@ -19,6 +29,7 @@ export interface Group {
   owner: { traveller_id: string; name: string; gender: 'FEMALE' | 'MALE' };
   member_ids: string[];
   stage: GroupStage;
+  hotel_status: HotelStatus;
 }
-export interface MyGroup extends Group { my_role: 'OWNER' | 'MEMBER'; pending_requests: number }
+export interface MyGroup extends Group { my_role: 'OWNER' | 'MEMBER'; pending_requests: number; booking: BookingSummary | null }
 export interface GroupDetails extends Group { members: Traveller[] }

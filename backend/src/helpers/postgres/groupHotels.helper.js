@@ -76,4 +76,29 @@ async function insertBooking(row, trx = db) {
   return created;
 }
 
-module.exports = { listRoomStays, findRoomStay, listSaved, insertSaved, deleteSaved, findBooking, insertBooking };
+/**
+ * X2: hotel activity for many groups in two queries (no N+1).
+ * Returns { [group_id]: { shortlisted: distinct saved rooms, booking: summary | null } } for groups
+ * with any activity; groups without any are left out.
+ */
+async function hotelStatusByGroups(groupIds, trx = db) {
+  if (!groupIds.length) return {};
+  const [counts, bookings] = await Promise.all([
+    trx('saved_hotel_options').select('group_id').countDistinct({ n: 'room_id' })
+      .whereIn('group_id', groupIds).groupBy('group_id'),
+    trx({ b: 'group_bookings' })
+      .join({ r: 'rooms' }, 'r.room_id', 'b.room_id')
+      .join({ h: 'hotels' }, 'h.hotel_id', 'r.hotel_id')
+      .whereIn('b.group_id', groupIds)
+      .select('b.group_id', 'b.booking_id', 'h.hotel_id', 'h.name as hotel_name', 'r.name as room_name',
+        'b.rooms_count', 'b.nights', 'b.total_inr', 'b.per_member_inr', 'b.created_at as booked_at'),
+  ]);
+  const out = {};
+  for (const c of counts) out[c.group_id] = { shortlisted: Number(c.n), booking: null };
+  for (const { group_id, ...booking } of bookings) {
+    out[group_id] = { shortlisted: out[group_id]?.shortlisted ?? 0, booking };
+  }
+  return out;
+}
+
+module.exports = { hotelStatusByGroups, listRoomStays, findRoomStay, listSaved, insertSaved, deleteSaved, findBooking, insertBooking };

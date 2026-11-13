@@ -184,6 +184,12 @@ M6 Common Group Page endpoints (all need `X-Traveller-Id`; **members only**, 403
 | GET | `/api/groups/:groupId/booking` | `{ booking: Booking \| null }` |
 | POST | `/api/groups/:groupId/booking` | `{room_id}` → 201 booking `BK-1001`… One transaction: lock group row, refuse if a booking exists (409), re-check availability (409), insert. `unique(group_id)` also blocks races. Any available room may be finalised (saving it first is optional). |
 
+TASK-X2 live trip status (no new endpoints): every Group DTO's `stage` is derived in `groups.service.stageOf()` as
+`BOOKED` (a `group_bookings` row) > `HOTEL_SHORTLISTED` (any `saved_hotel_options` row) > `LOBBY_FULL` > `LOBBY_OPEN`,
+and carries `hotel_status: { shortlisted, booked }` (public-safe). `GET /api/groups/mine` also returns
+`booking: null | { booking_id, hotel_id, hotel_name, room_name, rooms_count, nights, total_inr, per_member_inr, booked_at }`.
+The data comes from `groupHotels.helper.hotelStatusByGroups(groupIds)` (two queries for all groups, no N+1).
+
 ### 4.1 Backend architecture: router → controller → service → helper
 
 Every request goes through these layers, in this order. A layer only calls the layer directly below it.

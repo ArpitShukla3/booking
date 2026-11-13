@@ -12,6 +12,7 @@ import { useTravellerStore } from '@/store/useTravellerStore';
 import type { GroupDetails } from '@/types/group';
 import type { Traveller } from '@/types/traveller';
 import { SeatBar, StagePill, TripProgress } from './parts';
+import { hotelProgressOf, liveStage } from './tripFlow';
 import { InterestPanel, OwnerRequestsSection } from './requestParts';
 import { cityPhoto, stagger } from './media';
 import { sizeLabel } from './schema';
@@ -73,7 +74,11 @@ function GroupView({ group, created, reload }: { group: GroupDetails; created: b
   const isMember = !!me && group.member_ids.includes(me);
   // Shortlist/booking come from the hotel store (loaded by GroupHotelsSection for members).
   const hotels = useGroupHotelStore(selectEntry(me && isMember ? entryKey(me, group.group_id) : ''));
-  const hotelProgress = { shortlisted: hotels.shortlist.length, bookedHotel: hotels.booking?.hotel.name ?? null };
+  // Before the hotel store has loaded, fall back to the backend's hotel_status (TASK-X2).
+  const hotelProgress = hotels.fetchedAt
+    ? { shortlisted: hotels.shortlist.length, bookedHotel: hotels.booking?.hotel.name ?? null }
+    : hotelProgressOf(group);
+  const stage = liveStage(group, hotelProgress);
   // Arriving with #hotels (e.g. "Back to the group's hotels") scrolls once the section exists.
   useEffect(() => {
     if (isMember && window.location.hash === '#hotels') document.getElementById('hotels')?.scrollIntoView({ block: 'start' });
@@ -113,7 +118,7 @@ function GroupView({ group, created, reload }: { group: GroupDetails; created: b
       <div className="gp-hero gp-rise" style={{ minHeight: 280 }}>
         <Photo src={photo.src} fallback={photo.fallback} alt={`${group.city}, ${group.country_name}`} loading="eager" />
         <div className="gp-hero-body">
-          <div className="flex gap-2 flex-wrap mb-2"><StagePill stage={group.stage} />{isOwner ? <span className="gp-role"><Crown size={13} aria-hidden="true" />You organise this trip</span> : isMember ? <span className="gp-role is-member">You’re a member</span> : null}</div>
+          <div className="flex gap-2 flex-wrap mb-2"><StagePill stage={stage} />{isOwner ? <span className="gp-role"><Crown size={13} aria-hidden="true" />You organise this trip</span> : isMember ? <span className="gp-role is-member">You’re a member</span> : null}</div>
           <h1>{group.name}</h1>
           <p className="flex items-center gap-1"><MapPin size={15} aria-hidden="true" />{group.city}, {group.country_name} · {photo.caption}</p>
         </div>
@@ -164,7 +169,7 @@ function GroupView({ group, created, reload }: { group: GroupDetails; created: b
         <aside className="gp-side">
           <div className="card gp-rise" style={stagger(2)}>
             <h2 style={{ fontSize: 18, marginBottom: 14 }}>Trip progress</h2>
-            <TripProgress group={group} hotel={isMember ? hotelProgress : undefined} />
+            <TripProgress group={group} hotel={hotelProgress} />
           </div>
           <div className="card gp-rise" style={stagger(3)}>
             <div className="gp-price"><small>Approx budget per person</small><strong>{money(group.budget_inr)}</strong></div>

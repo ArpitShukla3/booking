@@ -5,10 +5,15 @@ import type { Group } from '@/types/group';
 import { stageLabel, tripSteps } from './tripFlow';
 import type { HotelProgress, TripStep } from './tripFlow';
 
+const PILL_CLASS: Record<Group['stage'], string> = {
+  LOBBY_OPEN: 'gp-pill--open', LOBBY_FULL: 'gp-pill--full', HOTEL_SHORTLISTED: 'gp-pill--hotel', BOOKED: 'gp-pill--booked',
+};
+
+/** Trip status from the backend. `key` re-mounts on change so a live update pops in. */
 export function StagePill({ stage }: { stage: Group['stage'] }) {
   return (
-    <span className={`gp-pill ${stage === 'LOBBY_FULL' ? 'gp-pill--full' : 'gp-pill--open'}`}>
-      <span className="gp-pill-dot" aria-hidden="true" />
+    <span key={stage} className={`gp-pill ${PILL_CLASS[stage] ?? 'gp-pill--open'}`}>
+      {stage === 'BOOKED' ? <Lock size={11} aria-hidden="true" /> : <span className="gp-pill-dot" aria-hidden="true" />}
       {stageLabel(stage)}
     </span>
   );
@@ -33,7 +38,7 @@ function StepIcon({ step }: { step: TripStep }) {
 }
 
 /** The trip journey: posted → lobby filling → lobby complete → hotel fixed → booked. */
-export function TripProgress({ group, compact = false, hotel }: { group: Pick<Group, 'stage' | 'members_count' | 'max_size' | 'spots_left'>; compact?: boolean; hotel?: HotelProgress }) {
+export function TripProgress({ group, compact = false, hotel }: { group: Pick<Group, 'stage' | 'members_count' | 'max_size' | 'spots_left'> & { hotel_status?: Group['hotel_status'] }; compact?: boolean; hotel?: HotelProgress }) {
   const steps = tripSteps(group, hotel);
   const doneCount = steps.filter((s) => s.state === 'done').length;
   const progress = ((doneCount + (steps.some((s) => s.state === 'current') ? 0.5 : 0)) / steps.length) * 100;

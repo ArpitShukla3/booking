@@ -83,7 +83,11 @@ type Group = {
   itinerary: string | null;
   owner: { traveller_id: string; name: string; gender: 'FEMALE'|'MALE' };
   member_ids: string[];
+  // TASK-X2 (additive): derived by the backend, most advanced first
+  stage: 'LOBBY_OPEN' | 'LOBBY_FULL' | 'HOTEL_SHORTLISTED' | 'BOOKED';
+  hotel_status: { shortlisted: number; booked: boolean };
 };
+// GET /api/groups/mine items also have: my_role, pending_requests, booking (summary | null).
 ```
 A match (Track A) is `{ group: Group, score: number, reasons: MatchReasons }`.
 

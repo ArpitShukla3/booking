@@ -5,6 +5,7 @@ const joinRequestsHelper = require('../../../src/helpers/postgres/joinRequests.h
 const transactionHelper = require('../../../src/helpers/postgres/transaction.helper');
 const lookupsHelper = require('../../../src/helpers/postgres/lookups.helper');
 const travellersHelper = require('../../../src/helpers/postgres/travellers.helper');
+const groupHotelsHelper = require('../../../src/helpers/postgres/groupHotels.helper');
 const service = require('../../../src/services/groups.service.ts');
 
 const sarahPost = { name: 'Kyoto temples & street food', city: 'Kyoto', check_in: '2027-04-10', check_out: '2027-04-15', max_size: 3, budget_inr: 60000, itinerary: 'Day 1 Fushimi Inari' };
@@ -27,6 +28,21 @@ describe('groups.service pure rules', () => {
     assert.equal(service.stageOf({ member_ids: ['T-001'], max_size: 3 }), 'LOBBY_OPEN');
     assert.equal(service.stageOf({ member_ids: ['T-001', 'T-002', 'T-003'], max_size: 3 }), 'LOBBY_FULL');
     assert.equal(service.stageOf({ member_ids: ['T-001'], max_size: 1 }), 'LOBBY_FULL');
+  });
+  it('X2: hotel activity outranks the lobby: booked > shortlisted > full > open', () => {
+    const open = { member_ids: ['T-001'], max_size: 3 };
+    const full = { member_ids: ['T-001', 'T-002'], max_size: 2 };
+    assert.equal(service.stageOf(open, { shortlisted: 0, booked: false }), 'LOBBY_OPEN');
+    assert.equal(service.stageOf(open, { shortlisted: 1, booked: false }), 'HOTEL_SHORTLISTED');
+    assert.equal(service.stageOf(full, { shortlisted: 2, booked: false }), 'HOTEL_SHORTLISTED');
+    assert.equal(service.stageOf(open, { shortlisted: 0, booked: true }), 'BOOKED');
+    assert.equal(service.stageOf(full, { shortlisted: 3, booked: true }), 'BOOKED');
+  });
+  it('X2: DTO carries hotel_status (defaults to none) and the derived stage', () => {
+    assert.deepEqual(service.toGroupDto(row()).hotel_status, { shortlisted: 0, booked: false });
+    const booked = service.toGroupDto(row(), { shortlisted: 1, booked: true });
+    assert.equal(booked.stage, 'BOOKED');
+    assert.deepEqual(booked.hotel_status, { shortlisted: 1, booked: true });
   });
   it('builds the shared Group DTO', () => {
     const dto = service.toGroupDto(row({ member_ids: ['T-001', 'T-002'] }));
@@ -109,6 +125,9 @@ describe('groups.service.createGroup', () => {
   });
 });
 
+const booking = { booking_id: 'BK-1001', hotel_id: 'HTL-KYO-001', hotel_name: 'Gion Corner Hotel', room_name: 'Twin Room', rooms_count: 1, nights: 5, total_inr: 23800, per_member_inr: 11900, booked_at: 'now' };
+const noHotels = () => mock.method(groupHotelsHelper, 'hotelStatusByGroups', async () => ({}));
+
 describe('groups.service reads', () => {
   afterEach(() => mock.restoreAll());
 
@@ -120,6 +139,7 @@ describe('groups.service reads', () => {
   it('getGroup adds member profiles, owner first', async () => {
     mock.method(groupsHelper, 'findById', async () => row({ member_ids: ['T-001', 'T-002'] }));
     mock.method(travellersHelper, 'findByIds', async () => [{ traveller_id: 'T-002', name: 'Priya' }, { traveller_id: 'T-001', name: 'Sarah' }]);
+    noHotels();
     const group = await service.getGroup('G-1001');
     assert.deepEqual(group.members.map((m) => m.traveller_id), ['T-001', 'T-002']);
   });
@@ -127,6 +147,7 @@ describe('groups.service reads', () => {
   it('listMyGroups marks the role and counts pending requests only on owned groups', async () => {
     mock.method(groupsHelper, 'listForTraveller', async () => [row(), row({ group_id: 'G-02', owner_id: 'T-003', member_ids: ['T-003', 'T-001'] })]);
     const count = mock.method(joinRequestsHelper, 'countPendingByGroups', async () => ({ 'G-1001': 2, 'G-02': 5 }));
+    noHotels();
     const groups = await service.listMyGroups('T-001');
     assert.deepEqual(groups.map((g) => g.my_role), ['OWNER', 'MEMBER']);
     assert.deepEqual(count.mock.calls[0].arguments[0], ['G-1001']);
@@ -136,7 +157,34 @@ describe('groups.service reads', () => {
   it('listMyGroups shows 0 when an owned group has no pending requests', async () => {
     mock.method(groupsHelper, 'listForTraveller', async () => [row()]);
     mock.method(joinRequestsHelper, 'countPendingByGroups', async () => ({}));
+    noHotels();
     assert.equal((await service.listMyGroups('T-001'))[0].pending_requests, 0);
+  });
+
+  it('X2: listMyGroups reads hotel status for all groups in one call and returns the live stage + booking', async () => {
+    mock.method(groupsHelper, 'listForTraveller', async () => [row(), row({ group_id: 'G-02' }), row({ group_id: 'G-03' })]);
+    mock.method(joinRequestsHelper, 'countPendingByGroups', async () => ({}));
+    const status = mock.method(groupHotelsHelper, 'hotelStatusByGroups', async () => ({
+      'G-1001': { shortlisted: 2, booking },
+      'G-02': { shortlisted: 1, booking: null },
+    }));
+    const groups = await service.listMyGroups('T-001');
+    assert.equal(status.mock.callCount(), 1);
+    assert.deepEqual(status.mock.calls[0].arguments[0], ['G-1001', 'G-02', 'G-03']);
+    assert.deepEqual(groups.map((g) => g.stage), ['BOOKED', 'HOTEL_SHORTLISTED', 'LOBBY_OPEN']);
+    assert.deepEqual(groups[0].booking, booking);
+    assert.equal(groups[1].booking, null);
+    assert.deepEqual(groups[1].hotel_status, { shortlisted: 1, booked: false });
+  });
+
+  it('X2: getGroup (public) shows stage + hotel_status but never the booking details', async () => {
+    mock.method(groupsHelper, 'findById', async () => row());
+    mock.method(travellersHelper, 'findByIds', async () => []);
+    mock.method(groupHotelsHelper, 'hotelStatusByGroups', async () => ({ 'G-1001': { shortlisted: 1, booking } }));
+    const group = await service.getGroup('G-1001');
+    assert.equal(group.stage, 'BOOKED');
+    assert.deepEqual(group.hotel_status, { shortlisted: 1, booked: true });
+    assert.equal('booking' in group, false);
   });
 });
 

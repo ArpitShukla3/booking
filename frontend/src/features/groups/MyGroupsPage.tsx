@@ -1,17 +1,18 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BellRing, CalendarDays, ChevronRight, Crown, MapPin, Moon, Plus, UserCheck } from 'lucide-react';
+import { BellRing, CalendarDays, ChevronRight, Crown, Heart, Lock, MapPin, Moon, Plus, RefreshCw, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/input';
 import { EmptyState, ErrorState, PageContainer, Photo } from '@/components/shared/common';
 import { money, tripDates } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
-import { groupService } from '@/services/groupService';
 import { joinRequestService } from '@/services/joinRequestService';
 import { useTravellerStore } from '@/store/useTravellerStore';
 import type { MyGroup } from '@/types/group';
 import { SeatBar, StagePill, TripProgress } from './parts';
 import { IncomingRequestsPanel } from './requestParts';
+import { STAGES, hotelProgressOf, stageLabel } from './tripFlow';
+import { useLiveMyGroups } from './useLiveMyGroups';
 import { cityPhoto, stagger } from './media';
 import { sizeLabel } from './schema';
 import './groups.css';
@@ -53,7 +54,8 @@ function GroupCard({ group, index }: { group: MyGroup; index: number }) {
           <SeatBar members={group.members_count} max={group.max_size} />
           <span className="text-sm"><b>{group.members_count}/{group.max_size}</b> members · {sizeLabel(group.max_size)}</span>
         </div>
-        <TripProgress group={group} compact />
+        <TripProgress group={group} hotel={hotelProgressOf(group, group.booking?.hotel_name)} compact />
+        <HotelLine group={group} />
       </div>
       <div className="gp-card-side">
         {owner ? (
@@ -61,15 +63,46 @@ function GroupCard({ group, index }: { group: MyGroup; index: number }) {
             <BellRing size={14} aria-hidden="true" />Requests <b>{group.pending_requests}</b>
           </Link>
         ) : <span className="gp-badge">Hosted by {group.owner.name}</span>}
-        <div className="gp-price">
-          <small>Budget per person</small>
-          <strong>{money(group.budget_inr)}</strong>
-          <small>{group.spots_left ? `${group.spots_left} spot${group.spots_left === 1 ? '' : 's'} left` : 'Group is full'}</small>
-        </div>
+        {group.booking ? (
+          <div className="gp-price">
+            <small>Your share · booked</small>
+            <strong>{money(group.booking.per_member_inr)}</strong>
+            <small>{money(group.booking.total_inr)} total for {group.members_count}</small>
+          </div>
+        ) : (
+          <div className="gp-price">
+            <small>Budget per person</small>
+            <strong>{money(group.budget_inr)}</strong>
+            <small>{group.spots_left ? `${group.spots_left} spot${group.spots_left === 1 ? '' : 's'} left` : 'Group is full'}</small>
+          </div>
+        )}
         <Button asChild><Link to={`/groups/${group.group_id}`}>View group <ChevronRight size={16} aria-hidden="true" /></Link></Button>
       </div>
     </article>
   );
+}
+
+/** X2: what the group has done about a hotel, straight from the backend. */
+function HotelLine({ group }: { group: MyGroup }) {
+  if (group.booking) {
+    const b = group.booking;
+    return (
+      <p className="gp-hotel-line is-booked">
+        <Lock size={13} aria-hidden="true" />
+        <span>Booked <Link to={`/groups/${group.group_id}/hotels/${b.hotel_id}`}>{b.hotel_name}</Link> · {b.room_name} · {b.rooms_count} room{b.rooms_count > 1 ? 's' : ''} · {b.booking_id}</span>
+      </p>
+    );
+  }
+  if (group.hotel_status.shortlisted) {
+    const n = group.hotel_status.shortlisted;
+    return (
+      <p className="gp-hotel-line">
+        <Heart size={13} aria-hidden="true" />
+        <span>{n} stay{n > 1 ? 's' : ''} on the shortlist · <Link to={`/groups/${group.group_id}#hotels`}>Compare and finalise</Link></span>
+      </p>
+    );
+  }
+  return null;
 }
 
 function Tabs({ value, onChange, counts }: { value: Tab; onChange: (t: Tab) => void; counts: Record<Tab, number> }) {
@@ -101,13 +134,30 @@ function ListSkeleton() {
   );
 }
 
+/** Live status indicator: pulsing dot, "updated Xs ago", manual refresh. */
+function LiveBadge({ refreshing, error, fetchedAt, onRefresh }: { refreshing: boolean; error: string | null; fetchedAt: number; onRefresh: () => void }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 5000); return () => window.clearInterval(t); }, []);
+  const secs = Math.max(0, Math.round((now - fetchedAt) / 1000));
+  const ago = secs < 10 ? 'just now' : secs < 60 ? `${secs}s ago` : `${Math.round(secs / 60)} min ago`;
+  return (
+    <div className={`gp-live ${error ? 'is-error' : ''}`}>
+      <span className="gp-live-dot" aria-hidden="true" />
+      <span>{error ? 'Offline: showing last update' : refreshing ? 'Updating…' : `Live · updated ${ago}`}</span>
+      <button type="button" onClick={onRefresh} aria-label="Refresh trip status" disabled={refreshing}>
+        <RefreshCw size={13} aria-hidden="true" className={refreshing ? 'is-spinning' : ''} />
+      </button>
+    </div>
+  );
+}
+
 export default function MyGroupsPage() {
   const traveller = useTravellerStore((s) => s.traveller)!;
-  const query = useAsync(() => groupService.listMyGroups(), `my-groups:${traveller.traveller_id}`);
+  const live = useLiveMyGroups(traveller.traveller_id);
   const incoming = useAsync(() => joinRequestService.listIncoming(), `incoming:${traveller.traveller_id}`);
   const [tab, setTab] = useState<Tab>('ALL');
   const [stage, setStage] = useState<StageFilter>('ALL');
-  const groups = useMemo(() => query.data ?? [], [query.data]);
+  const groups = live.groups;
   const counts = useMemo(() => ({
     ALL: groups.length,
     OWNER: groups.filter((g) => g.my_role === 'OWNER').length,
@@ -130,8 +180,8 @@ export default function MyGroupsPage() {
 
       {incoming.data ? <IncomingRequestsPanel requests={incoming.data} /> : null}
 
-      {query.loading ? <ListSkeleton />
-        : query.error ? <ErrorState error={query.error} retry={query.retry} />
+      {live.status.loading && !live.fetchedAt ? <ListSkeleton />
+        : live.status.error && !live.fetchedAt ? <ErrorState error={new Error(live.status.error)} retry={live.reload} />
         : !groups.length ? (
           <EmptyState title="No group trips yet" action={<Button asChild size="lg"><Link to="/groups/new"><Plus size={16} aria-hidden="true" />Create your first group</Link></Button>}>
             <p>Post a trip to Tokyo, Kyoto, Osaka, Dubai or Abu Dhabi and let travellers like you join in.</p>
@@ -144,12 +194,14 @@ export default function MyGroupsPage() {
                 <span className="text-sm text-muted-foreground">Trip status</span>
                 <Select id="stage-filter" value={stage} onChange={(e) => setStage(e.target.value as StageFilter)}>
                   <option value="ALL">All stages</option>
-                  <option value="LOBBY_OPEN">Lobby open</option>
-                  <option value="LOBBY_FULL">Lobby complete</option>
+                  {STAGES.map((st) => <option key={st} value={st}>{stageLabel(st)} ({groups.filter((g) => g.stage === st).length})</option>)}
                 </Select>
               </label>
             </div>
-            <p className="text-sm text-muted-foreground mb-3" aria-live="polite">{visible.length} of {groups.length} groups</p>
+            <div className="gp-live-row">
+              <p className="text-sm text-muted-foreground" aria-live="polite">{visible.length} of {groups.length} groups</p>
+              <LiveBadge refreshing={live.status.refreshing} error={live.status.error} fetchedAt={live.fetchedAt} onRefresh={live.reload} />
+            </div>
             {visible.length ? (
               <div className="gp-list" key={`${tab}:${stage}`}>
                 {visible.map((g, i) => <GroupCard key={g.group_id} group={g} index={i} />)}
