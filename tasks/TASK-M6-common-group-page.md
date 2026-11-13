@@ -41,12 +41,12 @@ Members of a group search hotels for the group's city and dates. They see the to
 - Re-check availability when booking is confirmed. No real hotel API and no real payment.
 
 ## Acceptance criteria
-- [ ] G-01 with 2 members (Sarah and Priya), Gion Corner Hotel Twin Room `RM-KYO-001-A`: 1 room × 5 nights × ₹4,760 = **₹23,800 total, ₹11,900 per member**.
-- [ ] An option where any night has fewer free rooms than needed is not offered as available.
-- [ ] Saved options and the booking survive a refresh and a backend restart.
-- [ ] Only one booking per group. A second attempt is refused.
-- [ ] Someone who is not a member cannot see or use the page (403).
-- [ ] Results are correct for any group (any city, dates, or member count in the data).
+- [x] G-01 with 2 members (Sarah and Priya), Gion Corner Hotel Twin Room `RM-KYO-001-A`: 1 room × 5 nights × ₹4,760 = **₹23,800 total, ₹11,900 per member**.
+- [x] An option where any night has fewer free rooms than needed is not offered as available.
+- [x] Saved options and the booking survive a refresh and a backend restart.
+- [x] Only one booking per group. A second attempt is refused.
+- [x] Someone who is not a member cannot see or use the page (403).
+- [x] Results are correct for any group (any city, dates, or member count in the data).
 
 ## Data
 - Reads: `hotels`, `rooms`, `availability`, `groups`, `travellers`
@@ -59,5 +59,7 @@ Members of a group search hotels for the group's city and dates. They see the to
 - Chat (S1)
 - Payments, cancellations, changing a booking
 
-## Execution plan
-_To be added later._
+## Execution plan (done 2026-11-13)
+- Migration `20261113000008_create_group_hotels.js`; `groupHotels.{routes,controller,service,helper}` + pure `hotelPricing.service.ts`, tests first (unit + `groupHotels.api.test.js`).
+- Frontend: `src/features/hotels/` (section under members, See inside page, Reddit-style mock reviews, credits page), `useGroupHotelStore` / `useHotelReviewStore` (Zustand persist), e2e `tests/groupHotels.spec.ts`.
+- Decision: any available room can be finalised directly; saving to the shortlist first is optional.

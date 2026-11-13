@@ -17,8 +17,9 @@ export function Footer() {
             No affiliation, payments or actual reservations.
           </p>
           <a href="/images/CREDITS.md" target="_blank" rel="noreferrer">
-            Photo credits
+            City photo credits
           </a>
+          <Link to="/credits">Hotel photo credits</Link>
           <p>Group Travel Matcher · 2026</p>
         </div>
       </div>

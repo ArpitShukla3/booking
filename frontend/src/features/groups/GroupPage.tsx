@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { CalendarDays, CheckCircle2, ChevronRight, Copy, Crown, Hotel, MapPin, Moon, UserPlus, UsersRound, Wallet } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ChevronRight, Copy, Crown, Hotel, Lock, MapPin, Moon, UserPlus, UsersRound, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState, ErrorState, InterestTags, PageContainer, Photo } from '@/components/shared/common';
 import { ApiError } from '@/lib/api';
@@ -14,6 +14,8 @@ import { SeatBar, StagePill, TripProgress } from './parts';
 import { InterestPanel, OwnerRequestsSection } from './requestParts';
 import { cityPhoto, stagger } from './media';
 import { sizeLabel } from './schema';
+import { GroupHotelsSection } from '@/features/hotels/GroupHotelsSection';
+import { entryKey, selectEntry, useGroupHotelStore } from '@/store/useGroupHotelStore';
 import './groups.css';
 
 function MemberCard({ member, isOwner, isYou, index }: { member: Traveller; isOwner: boolean; isYou: boolean; index: number }) {
@@ -63,6 +65,13 @@ function GroupView({ group, created, reload }: { group: GroupDetails; created: b
   const photo = cityPhoto(group.city, 1600);
   const isOwner = me === group.owner.traveller_id;
   const isMember = !!me && group.member_ids.includes(me);
+  // Shortlist/booking come from the hotel store (loaded by GroupHotelsSection for members).
+  const hotels = useGroupHotelStore(selectEntry(me && isMember ? entryKey(me, group.group_id) : ''));
+  const hotelProgress = { shortlisted: hotels.shortlist.length, bookedHotel: hotels.booking?.hotel.name ?? null };
+  // Arriving with #hotels (e.g. "Back to the group's hotels") scrolls once the section exists.
+  useEffect(() => {
+    if (isMember && window.location.hash === '#hotels') document.getElementById('hotels')?.scrollIntoView({ block: 'start' });
+  }, [isMember]);
   return (
     <>
       {created ? (
@@ -120,7 +129,7 @@ function GroupView({ group, created, reload }: { group: GroupDetails; created: b
         <aside className="gp-side">
           <div className="card gp-rise" style={stagger(2)}>
             <h2 style={{ fontSize: 18, marginBottom: 14 }}>Trip progress</h2>
-            <TripProgress group={group} />
+            <TripProgress group={group} hotel={isMember ? hotelProgress : undefined} />
           </div>
           <div className="card gp-rise" style={stagger(3)}>
             <div className="gp-price"><small>Approx budget per person</small><strong>{money(group.budget_inr)}</strong></div>
@@ -129,14 +138,29 @@ function GroupView({ group, created, reload }: { group: GroupDetails; created: b
             <p className="icon-line"><Crown size={15} aria-hidden="true" />Organised by {group.owner.name}</p>
             <InterestPanel group={group} />
             <div className="grid gap-2 mt-4">
-              {/* M6 adds hotel search. */}
-              <Button disabled title="Available once the group is complete (M6)"><Hotel size={16} aria-hidden="true" />Search hotels together</Button>
+              {isMember ? (
+                <Button asChild>
+                  <a href="#hotels" onClick={(e) => { e.preventDefault(); document.getElementById('hotels')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', '#hotels'); }}>
+                    {hotels.booking ? <Lock size={16} aria-hidden="true" /> : <Hotel size={16} aria-hidden="true" />}
+                    {hotels.booking ? 'View the booked hotel' : 'Search hotels together'}
+                  </a>
+                </Button>
+              ) : (
+                <Button disabled title="Only group members can search hotels"><Hotel size={16} aria-hidden="true" />Search hotels together</Button>
+              )}
               <CopyLink />
             </div>
-            <p className="field-hint mt-3">Hotel search and booking open on the Common Group Page.</p>
+            <p className="field-hint mt-3">{isMember ? 'Members search, shortlist and finalise one hotel for the whole group.' : 'Hotel search and booking are for group members only.'}</p>
           </div>
         </aside>
       </div>
+
+      {isMember ? <GroupHotelsSection group={group} /> : (
+        <section className="card gp-section" aria-labelledby="hotels-locked-h">
+          <h2 id="hotels-locked-h" className="flex items-center gap-2"><Lock size={18} aria-hidden="true" />Hotels are for members only</h2>
+          <p className="text-muted-foreground">Once the organiser approves your request, you can search, compare and finalise a stay with the group here.</p>
+        </section>
+      )}
     </>
   );
 }
