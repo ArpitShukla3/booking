@@ -1,95 +1,113 @@
 # Group Travel Matcher
 
-Local development uses Node.js 24 (see `.nvmrc`) and Docker with Compose.
-Read [Agent.md](Agent.md) for project rules, the database schema, and the roadmap.
-The frontend now has a Booking.com-inspired homepage and Group Match discovery
-with browser-local sample data. It runs independently of the API. Real signup (`/signup`), Traveller ID login (`/login`) and a protected profile dashboard (`/dashboard`) now use PostgreSQL through the backend. Remembered identity lasts seven days without renewing on refresh.
-See [project context](docs/PROJECT_CONTEXT.md) and [frontend instructions](frontend/README.md).
+Intern Hackathon · Problem 3. Solo travellers either **post a group trip** and approve who joins, or **search for groups**
+that fit their dates, budget and interests. Once a group forms, members pick a hotel together, see the **cost per person**
+and book once for everyone.
 
-For frontend discovery only: `nvm use && npm run dev --prefix frontend`.
+## Quick start
 
-## First-time setup
-
-From the repository root:
+Needs **Node.js 22+** (`.nvmrc` pins 24) and **Docker** running.
 
 ```bash
-nvm install
-nvm use
+./start.sh
+```
+
+That one command:
+1. checks Node and Docker, and creates `backend/.env` from `.env.example` if it is missing,
+2. installs npm packages only if they are missing or out of date,
+3. starts PostgreSQL (with pgvector) and MinIO in Docker,
+4. applies any **pending** migrations (tables + the read-only data pack are loaded on first run),
+5. runs the API and the web app together. **Ctrl+C** stops both.
+
+| | URL |
+|---|---|
+| Web app | http://127.0.0.1:5173 |
+| API health | http://localhost:4000/api/health → `{"status":"ok","db":"up"}` |
+
+Sign in with a Traveller ID from the data pack (**T-001** Sarah, **T-002** Priya) or register a new traveller at `/signup`.
+Data survives restarts (Docker volumes). Stop the containers with `npm run db:down --prefix backend`.
+
+<details><summary>Manual start (two terminals)</summary>
+
+```bash
 cp --update=none backend/.env.example backend/.env
-npm ci --prefix backend
-npm ci --prefix frontend
-npm run setup --prefix backend
+npm ci --prefix backend && npm ci --prefix frontend
+npm run setup --prefix backend && npm run dev --prefix backend     # terminal 1: Docker + migrations + API
+npm run dev --prefix frontend -- --host 127.0.0.1 --port 5173      # terminal 2: web app
+```
+If port 5432 is taken, change `DB_PORT` in `backend/.env`.
+</details>
+
+## Architecture
+
+```
+React 19 + Vite + TypeScript + Tailwind 3.4 (frontend/)
+   │  Axios · identity header X-Traveller-Id · Zustand caches · React Router
+   ▼
+Express 5 API (backend/)   route → controller → service → helper
+   │                       all business rules live in services (matching, ranking, approvals, pricing)
+   ├── PostgreSQL 16 + pgvector  (Knex migrations; data pack loaded read-only)
+   └── MinIO (S3)               group trip photos
 ```
 
-If connections to `registry.npmjs.org` are reset on this system, add
-`--registry=https://registry.npmmirror.com` to each `npm ci` command. The lockfiles
-still control package versions and integrity checks.
+- The frontend never reads the data files; everything comes from the API.
+- SQL only lives in `backend/src/helpers/postgres/`. Services are unit-tested with helpers mocked; integration tests hit a
+  separate `booking_test` database.
+- **No AI/LLM is called by the app.** (Review contexts and embeddings for "Ask the reviews" were computed offline once and
+  committed as data; see below.)
 
-The database persists in the Docker volume. Local backend configuration is in
-`backend/.env` (ignored by Git). `COMPOSE_PROJECT_NAME=booking` isolates the
-database volume from other projects with a folder named `backend`.
-If port 5432 is occupied, change `DB_PORT` in
-that file before running setup. Frontend configuration can go in
-`frontend/.env.local`; use `VITE_API_URL=http://localhost:4000` when adding API calls.
+More detail: [Agent.md](Agent.md) (rules, schema, endpoints, migrations) · [tasks/](tasks/) (one ticket per feature) ·
+[docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) (history and decisions).
 
-## Start development
+## What is finished
 
-Run these in two terminals from the repository root, after `nvm use` in each:
+| ID | Feature | Status |
+|---|---|---|
+| M1 | Sign up / sign in with a Traveller ID (no passwords, remembered 7 days) | ✅ |
+| M2 | Create a group post (city, dates in 1–20 Apr 2027, size 1–4, itinerary, budget) + My groups | ✅ |
+| M3 | Traveller search (home city, destination, dates, interests, budget, gender preference), saved | ✅ |
+| M4 | Matches: all 6 rules, ranked with a score and plain-language reasons | ✅ |
+| M5 | "Interested" → owner notified → approve / reject (+ notes, cancel, leave, remove member) | ✅ |
+| M6 | Common group page: hotels for the group's city and dates, total + per-member cost, shortlist, one locked booking | ✅ |
+| G1 | Filter results by shared interests / gender composition | ❌ not done |
+| G2 | Member profile pages (interests, home city, age, ratings and reviews) | 🟡 partly (no "groups they are in" list) |
+| S1 | Team chat for booked groups (messages, announcements, polls) | ✅ |
+| X1–X4 | Extras: traveller reviews, live trip status on My groups, **Ask the reviews** search, group photo gallery | ✅ |
+
+### Matching (backend `matching.service.ts`)
+A group is shown only if **all 6 rules** hold: same city · ≥ 2 shared nights · budgets differ by ≤ 40 % of the lower one
+(exactly 40 % passes) · ≥ 2 interests shared with the owner · gender preference allowed both ways · `members + 1 ≤ size`.
+Groups you own or are in are never shown.
+
+**Score (0–100)** = shared interests `min(n,4)/4 × 50` + budget closeness `(1 − diff / (0.4 × lower)) × 30`
++ date overlap `shared nights / your nights × 20`.
+Ties → more shared interests → smaller budget gap → earlier check-in → group ID.
+
+### Cost split (backend `hotelPricing.service.ts`)
+Rooms = `ceil(members / max adults)`, bookable only if every night has enough rooms left; total = `price × rooms × nights`;
+per member = `total ÷ members`. Example: Sarah + Priya, Gion Corner Twin, 5 nights → ₹4,760 × 1 × 5 = **₹23,800**, **₹11,900** each.
+
+### Ask the reviews (X3)
+On a hotel page or a traveller profile, ask a question ("Is it quiet at night?") and get the most relevant review passages.
+Ranking = BM25 keyword search + pgvector similarity, merged with Reciprocal Rank Fusion. Each passage was given a short
+context by a local model **offline** (`npm run reviews:index --prefix backend`, Ollama); the running app only reads stored
+vectors.
+
+## Tests
 
 ```bash
-npm run setup --prefix backend && npm run dev --prefix backend
+cd backend  && npm run typecheck && npm test            # unit + integration (needs Docker up)
+cd frontend && npm run typecheck && npm run lint && npm test && npm run build
+cd frontend && npm run test:e2e                         # Playwright, needs ./start.sh running
 ```
 
-```bash
-npm run dev --prefix frontend -- --host 127.0.0.1 --port 5173 --strictPort
-```
+## Known limitations
 
-- Frontend: http://localhost:5173
-- API health: http://localhost:4000/api/health (expected: `{"status":"ok","db":"up"}`)
-
-Stop either dev server with Ctrl+C. Stop PostgreSQL with
-`npm run db:down --prefix backend`; this keeps its data.
-
-## Checks
-
-```bash
-npm run build --prefix frontend
-npm run lint --prefix frontend
-npm run migrate:status --prefix backend
-```
-
-## Group Match: how matching and ranking work
-
-All matching runs in the backend (`backend/src/services/matching.service.ts`). A group is shown only if **all 6 rules** pass:
-same city · ≥ 2 shared nights (the check-out day is not a night) · budgets within 40% of the lower one (exactly 40% passes) ·
-≥ 2 interests shared with the **owner** · gender preference allowed both ways · `members + 1 ≤ max_size`.
-Groups you own or are already in are never shown.
-
-**Score (0–100)** = shared interests `min(n, 4) / 4 × 50` + budget closeness `(1 − diff / (0.4 × lower budget)) × 30`
-+ date overlap `shared nights / your nights × 20`, rounded.
-Ties: more shared interests → smaller budget difference → earlier check-in → group ID.
-
-## Common Group Page (M6)
-
-Members of a group (owner included) see **Stays in <city> for your group** under *Who's going* on `/groups/:groupId`.
-All pricing runs in the backend (`backend/src/services/hotelPricing.service.ts`):
-rooms needed = `ceil(members / max_adults)`, available only if `rooms_left ≥ rooms needed` on **every** night
-(check-in up to the day before check-out), total = `price × rooms × nights`, per member = `total ÷ members` (nearest rupee).
-Example: G-01 with Sarah and Priya, Gion Corner Twin `RM-KYO-001-A` → 1 room × 5 nights × ₹4,760 = **₹23,800**, **₹11,900** each.
-
-- Search bar (name/area), sort, star/free-cancellation filters and a per-night price filter (histogram, slider, quick ranges, min/max).
-  Filtering/sorting only changes what is shown; the numbers come from the API.
-- Heart = save to the group shortlist (who saved it, "x/y prefer this", cost vs budget). **Finalise** opens a confirmation
-  popup and creates one booking (`BK-…`); after that the group is locked.
-- **See inside** (`/groups/:groupId/hotels/:hotelId`): photos, details, every room priced for the group, an OpenStreetMap map,
-  and Reddit-style guest reviews (votes, nested replies, new reviews).
-- Hotel photo credits: `/credits` (read from the data pack's `images/ATTRIBUTIONS.md` through the backend).
-
-### Known limitations
-
-- Booking does not reduce `availability`; the catalog stays read-only. No payment, cancellation or changes after booking.
-- Guest reviews are **mock** data generated in the browser (no API). Votes, replies and new reviews are stored only in that
-  browser's localStorage, per traveller ID.
-- Shortlist and booking are in PostgreSQL; the frontend also caches the last response and filters in localStorage
-  (`group_hotels_v1`) so pages paint instantly, then revalidates.
-- The map is an OpenStreetMap embed and needs internet access.
+- Identity is a Traveller ID only (as the brief allows): no passwords or OAuth.
+- Booking does not reduce hotel availability (the catalog is read-only) and there is no payment or cancellation after booking.
+- Hotel and traveller **reviews are sample data** (stored in Postgres); votes and replies are saved in the browser only.
+- The offline review index currently covers part of the reviews; the rest use keyword search with a template context.
+- G1 filters are not built; G2 profiles do not list a member's groups.
+- The hotel map uses OpenStreetMap and needs internet access.
+- `start.sh` targets Linux/macOS (bash). On Windows use WSL or the manual steps.
+- Some older `discovery.spec.ts` Playwright tests predate the sign-in guard on `/group-match` and fail.
