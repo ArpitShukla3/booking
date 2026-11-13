@@ -18,4 +18,15 @@ module.exports = {
     // Tests never touch the dev database: they use a separate one (default "<DB_NAME>_test").
     database: isTest ? process.env.DB_NAME_TEST || `${dbName}_test` : dbName,
   },
+  // TASK-X4: S3-compatible storage (MinIO locally; real S3 works by changing these values).
+  s3: {
+    endpoint: process.env.S3_ENDPOINT || 'http://localhost:9000',
+    // Address the BROWSER uses for presigned links (differs from endpoint when the API runs inside Docker).
+    publicEndpoint: process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT || 'http://localhost:9000',
+    region: process.env.S3_REGION || 'us-east-1',
+    accessKeyId: process.env.S3_ACCESS_KEY || 'booking',
+    secretAccessKey: process.env.S3_SECRET_KEY || 'booking-secret',
+    bucket: isTest ? process.env.S3_BUCKET_TEST || 'group-photos-test' : process.env.S3_BUCKET || 'group-photos',
+    linkTtlSeconds: Number(process.env.S3_LINK_TTL_SECONDS) || 3600,
+  },
 };

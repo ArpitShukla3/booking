@@ -177,6 +177,15 @@ S1 team chat endpoints (`groupChat.{routes,controller,service,helper}`, mounted 
 | POST | `/polls` | `{question, options[2..6]}` → 201; message + options in one transaction; members need `polls = ALL_MEMBERS` |
 | POST | `/polls/:messageId/vote` | `{option_id}`; one vote per person, changing it moves the vote |
 
+X4 group photo endpoints (`groupPhotos.{routes,controller,service}` + `helpers/postgres/groupPhotos.helper.js` + `helpers/storage/photos.helper.js`, mounted at `/api/groups/:groupId/photos`, all 🔒, members only, after booking):
+
+| Method | Path | Result |
+|---|---|---|
+| GET | `/` | `{group, photos[], limits}`; photos carry presigned `url` + `url_expires_at` + `can_delete` |
+| POST | `/` | multipart `photos` (≤ 10 files, ≤ 5 MB, JPEG/PNG/WebP by magic bytes) + `captions` (JSON array) → 201; store all → insert all in one transaction → delete stored objects on failure |
+| GET | `/:photoId` | photo + `position`, `total`, `prev_photo_id`, `next_photo_id` |
+| DELETE | `/:photoId` | uploader or organiser; row first, then the object |
+
 M6 Common Group Page endpoints (all need `X-Traveller-Id`; **members only**, 403 otherwise; 404 unknown group; `groupHotels.{routes,controller,service,helper}` + pure `hotelPricing.service.ts`):
 
 | Method | Path | Result |
@@ -445,6 +454,18 @@ All chat tables cascade when the group or message is deleted.
 Sample content (447 reviews, 816 chunks) is generated deterministically into `backend/data/reviews/corpus.json`
 (`npm run reviews:corpus`, same text and IDs as the old browser mocks). Votes/replies stay browser-local.
 
+### Group photos (X4, app-created; migration `…14`)
+| Column | Type | Notes |
+|---|---|---|
+| `photo_id` | text PK | `P-1001`+ (`group_photo_id_seq`, reserved before the file is stored) |
+| `group_id` / `uploader_id` | text FK | group cascades; uploader → travellers |
+| `object_key` | text unique | `groups/<group_id>/<photo_id>.<ext>` in the S3 bucket |
+| `mime_type`, `size_bytes`, `width`, `height` | | JPEG/PNG/WebP only, ≤ 5 MB |
+| `caption`, `created_at` | | caption ≤ 300 chars |
+
+The image files are NOT in Postgres: they live in S3-compatible storage (MinIO in docker-compose, bucket `group-photos`,
+tests `group-photos-test`). Only `src/helpers/storage/photos.helper.js` talks to S3.
+
 ### Relationships
 ```
 groups.owner_id ──► travellers.traveller_id
@@ -471,6 +492,7 @@ Migrations are in `backend/migrations/` and are managed by Knex. Knex runs each 
 | `20261113000009_join_requests_removed_status.js` | Adds `REMOVED` to the `join_requests` status check. `down` converts REMOVED rows to REJECTED and restores the old check. |
 | `20261113000011_create_reviews.js` | X3: `CREATE EXTENSION vector`, `reviews`, `review_chunks` (+ HNSW index), `review_questions`. `down` drops them and the extension. |
 | `20261113000012_seed_reviews.js` | X3: loads `data/reviews/corpus.json` and, when present, `data/reviews/index.json` (contexts + embeddings). No model calls. `down` empties the three tables. |
+| `20261113000014_create_group_photos.js` | X4: `group_photos` (`P-1001`+ from `group_photo_id_seq`, `object_key` unique, mime/size/caption CHECKs). The files live in MinIO/S3. `down` drops the table and sequence. |
 | `20261113000013_join_request_lifecycle.js` | M5 follow-ups: statuses `CANCELLED`, `LEFT`, `CLOSED` and `join_requests.message` (≤ 500). `down` maps CANCELLED/CLOSED → REJECTED, LEFT → REMOVED and drops the column. |
 | `20261113000010_create_group_chat.js` | S1: `group_chats` (`C-1001`+, unique per group, access settings), `chat_messages` (`seq` from 1001 + generated `message_id` `M-…`), `chat_poll_options`, `chat_poll_votes`. `down` drops the four tables and the sequence. |
 

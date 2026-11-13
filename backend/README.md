@@ -98,3 +98,12 @@ npm test
 
 Use `booking_test` for rollback/integration verification. Do not reset the development
 DB to run tests or expect exactly 24 travellers after users have registered.
+
+## Group photos storage (X4): MinIO / S3
+
+`npm run db:up` also starts **MinIO** (`bitnamilegacy/minio:2025.4.22`, S3 API on :9000, console on :9001,
+volume `booking_miniodata`). It creates the buckets `group-photos` and `group-photos-test`. Photo files live there;
+PostgreSQL only stores their metadata (`group_photos`). Settings: `S3_*` in `.env.example`. Any S3-compatible
+service (including AWS S3) works by changing those values. The official `minio/minio` image can no longer be pulled,
+so this pinned legacy build is for local development only. Backups now need the MinIO volume as well as Postgres.
+See `../tasks/TASK-X4-group-photo-gallery.md`.

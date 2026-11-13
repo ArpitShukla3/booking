@@ -12,6 +12,7 @@
 | [M6 Common Group Page](TASK-M6-common-group-page.md) | Done |
 | [X1 Traveller profile + reviews (demo data)](TASK-X1-traveller-profile-reviews.md) | Done (frontend, mock reviews/votes) |
 | [S1 Team chat](TASK-S1-group-chat.md) | Done |
+| [X4 Group photo gallery (MinIO / S3)](TASK-X4-group-photo-gallery.md) | Implemented; acceptance pending the test run |
 | G1 filters, G2 member profiles | Not started (G2 partly covered by X1) |
 
 The problem statement has 6 Must-have deliverables (M1–M6). They are split into **two tracks of 3 tickets**. The split follows the two user flows in the problem statement, so each developer owns whole features end to end: DB tables, backend API, and frontend pages.
@@ -138,6 +139,8 @@ Errors from every endpoint: `{ "error": { "message": string, "fields"?: { [field
 | GET / POST | `/api/groups/:id/chat/messages` 🔒 | S1 | list (`?after=M-…`) / send `TEXT` or `ANNOUNCEMENT` (owner only) |
 | POST | `/api/groups/:id/chat/polls` 🔒 | S1 | create poll (2–6 options) |
 | POST | `/api/groups/:id/chat/polls/:messageId/vote` 🔒 | S1 | one vote per person, can be changed |
+| GET / POST | `/api/groups/:id/photos` 🔒 | X4 | members only, after booking; list with presigned links / multipart upload (`photos`, `captions`) |
+| GET / DELETE | `/api/groups/:id/photos/:photoId` 🔒 | X4 | photo + prev/next / delete (uploader or organiser) |
 | GET | `/api/groups/:id/hotels` 🔒 | M6 | members only; options with total + per-member cost |
 | GET / POST / DELETE | `/api/groups/:id/saved-options` 🔒 | M6 | shortlist + alignment |
 | GET / POST | `/api/groups/:id/booking` 🔒 | M6 | one booking per group; 409 if one already exists |
@@ -150,9 +153,9 @@ Errors from every endpoint: `{ "error": { "message": string, "fields"?: { [field
 |---|---|---|
 | Backend features (each has `routes/<f>.routes.js`, `controllers/<f>.controller.js`, `services/<f>.service.js`, `helpers/postgres/<f>.helper.js`) | `lookups`, `travellers`, `searches`, `matches` | `groups`, `joinRequests`, `groupHotels` |
 | Pure logic + unit tests | `services/matching.service.js` (the 6 rules, scoring; no DB) | `services/hotelPricing.service.js` (rooms needed, total, per member; no DB) |
-| Migrations / tables | `searches` | `join_requests`, `saved_hotel_options`, `group_bookings`, `group_chats`, `chat_messages`, `chat_poll_options`, `chat_poll_votes` |
-| Frontend pages | `/signup`, `/login`, `/search`, `/searches/:id/matches`, `/me` | `/groups/new`, `/my-groups`, `/groups/:groupId`, `/groups/:groupId/hotels`, `/my-requests`, `/travellers/:travellerId` (X1), `/groups/:groupId/chat` (S1), `/credits` |
-| Frontend folders | `src/features/traveller/`, `src/features/search/` | `src/features/groups/`, `src/features/hotels/`, `src/features/profile/` (X1), `src/features/chat/` (S1) |
+| Migrations / tables | `searches` | `join_requests`, `saved_hotel_options`, `group_bookings`, `group_chats`, `chat_messages`, `chat_poll_options`, `chat_poll_votes`, `group_photos` (+ MinIO bucket `group-photos`) |
+| Frontend pages | `/signup`, `/login`, `/search`, `/searches/:id/matches`, `/me` | `/groups/new`, `/my-groups`, `/groups/:groupId`, `/groups/:groupId/hotels`, `/my-requests`, `/travellers/:travellerId` (X1), `/groups/:groupId/chat` (S1), `/groups/:groupId/photos` + `/groups/:groupId/photos/:photoId` (X4), `/credits` |
+| Frontend folders | `src/features/traveller/`, `src/features/search/` | `src/features/groups/`, `src/features/hotels/`, `src/features/profile/` (X1), `src/features/chat/` (S1), `src/features/photos/` (X4) |
 
 **Cross-track reads:** if your service needs the other track's data (e.g. Track B shows member profiles, Track A reads groups for matching), **call the other track's helper read functions** (`travellers.helper.findByIds`, `groups.helper.listOpenByCity`). Don't write your own SQL against their tables. Ask the owner to add a missing read function; it's a small additive change.
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { CalendarDays, CheckCircle2, ChevronRight, Copy, Crown, Hotel, Loader2, Lock, LogOut, MapPin, MessageCircle, Moon, UserMinus, UserPlus, UsersRound, Wallet } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ChevronRight, Copy, Crown, Hotel, Images, Loader2, Lock, LogOut, MapPin, MessageCircle, Moon, UserMinus, UserPlus, UsersRound, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState, ErrorState, InterestTags, PageContainer, Photo } from '@/components/shared/common';
@@ -225,6 +225,17 @@ function GroupView({ group, created, reload }: { group: GroupDetails; created: b
                 ) : (
                   <Button variant="outline" disabled title="The team chat opens once the group books its hotel">
                     <MessageCircle size={16} aria-hidden="true" />Chat with team<Lock size={13} aria-hidden="true" />
+                  </Button>
+                )
+              ) : null}
+              {isMember ? (
+                hotels.booking ? (
+                  <Button asChild variant="outline">
+                    <Link to={`/groups/${group.group_id}/photos`}><Images size={16} aria-hidden="true" />Trip photos</Link>
+                  </Button>
+                ) : (
+                  <Button variant="outline" disabled title="The photo gallery opens once the group books its hotel">
+                    <Images size={16} aria-hidden="true" />Trip photos<Lock size={13} aria-hidden="true" />
                   </Button>
                 )
               ) : null}

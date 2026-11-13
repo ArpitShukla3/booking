@@ -30,6 +30,8 @@ const GroupPage = lazy(() => import("@/features/groups/GroupPage"));
 const MyRequestsPage = lazy(() => import("@/features/groups/MyRequestsPage"));
 const TravellerProfilePage = lazy(() => import("@/features/profile/TravellerProfilePage"));
 const GroupChatPage = lazy(() => import("@/features/chat/GroupChatPage"));
+const GroupPhotosPage = lazy(() => import("@/features/photos/GroupPhotosPage"));
+const PhotoDetailPage = lazy(() => import("@/features/photos/PhotoDetailPage"));
 const HotelDetailsPage = lazy(() => import("@/features/hotels/HotelDetailsPage"));
 const CreditsPage = lazy(() => import("@/features/hotels/CreditsPage"));
 function PageTitle() {
@@ -46,6 +48,10 @@ function PageTitle() {
               ? "My requests | Group Travel Matcher"
             : /^\/groups\/[^/]+\/chat$/.test(pathname)
               ? "Team chat | Group Travel Matcher"
+            : /^\/groups\/[^/]+\/photos\/[^/]+$/.test(pathname)
+              ? "Photo | Group Travel Matcher"
+            : /^\/groups\/[^/]+\/photos$/.test(pathname)
+              ? "Trip photos | Group Travel Matcher"
             : pathname.startsWith("/travellers/")
               ? "Traveller profile | Group Travel Matcher"
             : pathname === "/credits"
@@ -87,6 +93,8 @@ export default function App() {
             <Route path="/my-requests" element={<RequireTraveller><MyRequestsPage /></RequireTraveller>} />
             <Route path="/groups/:groupId" element={<GroupPage />} />
             <Route path="/groups/:groupId/chat" element={<RequireTraveller><GroupChatPage /></RequireTraveller>} />
+            <Route path="/groups/:groupId/photos" element={<RequireTraveller><GroupPhotosPage /></RequireTraveller>} />
+            <Route path="/groups/:groupId/photos/:photoId" element={<RequireTraveller><PhotoDetailPage /></RequireTraveller>} />
             <Route path="/travellers/:travellerId" element={<TravellerProfilePage />} />
             <Route path="/groups/:groupId/hotels/:hotelId" element={<RequireTraveller><HotelDetailsPage /></RequireTraveller>} />
             <Route path="/credits" element={<CreditsPage />} />
