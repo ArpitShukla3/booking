@@ -162,6 +162,17 @@ M5 join-request endpoints (all need `X-Traveller-Id`; `joinRequests.{routes,cont
 
 `GET /api/groups/mine` now returns the real `pending_requests` count for owned groups.
 
+M6 Common Group Page endpoints (all need `X-Traveller-Id`; **members only**, 403 otherwise; 404 unknown group; `groupHotels.{routes,controller,service,helper}` + pure `hotelPricing.service.ts`):
+
+| Method | Path | Result |
+|---|---|---|
+| GET | `/api/groups/:groupId/hotels` | Every hotel in the group's city with each room priced for the group: `rooms_needed`, `nights`, `total_inr`, `per_member_inr`, `available` (rooms_left ≥ rooms needed on **every** night; a missing availability row = sold out), `min_rooms_left`, plus `from_per_member_inr` per hotel |
+| GET | `/api/groups/:groupId/saved-options` | Shortlist, one entry per room: who saved it, `alignment` (how many members saved it), live price for the current member count, `within_budget` vs the group budget |
+| POST | `/api/groups/:groupId/saved-options` | `{room_id}` → 201 shortlist. 400 `fields.room_id`, 404 room not in the city, 409 unavailable / already saved by you / group booked |
+| DELETE | `/api/groups/:groupId/saved-options/:roomId` | Remove **your own** save → 200 shortlist; 404 if you hadn't saved it; 409 once booked |
+| GET | `/api/groups/:groupId/booking` | `{ booking: Booking \| null }` |
+| POST | `/api/groups/:groupId/booking` | `{room_id}` → 201 booking `BK-1001`… One transaction: lock group row, refuse if a booking exists (409), re-check availability (409), insert. `unique(group_id)` also blocks races. Any available room may be finalised (saving it first is optional). |
+
 ### 4.1 Backend architecture: router → controller → service → helper
 
 Every request goes through these layers, in this order. A layer only calls the layer directly below it.
@@ -245,7 +256,7 @@ Integration hygiene:
 - Never truncate data-pack tables.
 - Files run one at a time. Always `after(closeDb)`.
 
-Current suite: 11 unit + 9 integration tests (health, error handling, image serving, seed-data correctness). All pass.
+Run `npm test` for the current counts (M6 added `hotelPricing`/`groupHotels` unit tests and `groupHotels.api.test.js`).
 
 ---
 
@@ -319,6 +330,30 @@ Index on `city`. `GROUPS` is a non-reserved SQL keyword: `select * from groups` 
 
 UNIQUE (`group_id`, `seeker_id`): one request per seeker per group, so repeated clicks and re-requests after a rejection cannot add rows. Indexes on (`group_id`, `status`) and (`seeker_id`, `created_at`).
 
+### `saved_hotel_options` (M6, app-created)
+| Column | Type | Notes |
+|---|---|---|
+| `id` | serial PK | |
+| `group_id` | text FK → groups | ON DELETE CASCADE |
+| `room_id` | text FK → rooms | ON DELETE CASCADE |
+| `saved_by` | text FK → travellers | ON DELETE CASCADE |
+| `rooms_count`, `nights`, `total_inr`, `per_member_inr` | int | priced snapshot at save time (the API re-prices for the current member count) |
+| `created_at` | timestamptz | |
+
+UNIQUE (`group_id`, `room_id`, `saved_by`). Index (`group_id`, `created_at`).
+
+### `group_bookings` (M6, app-created)
+| Column | Type | Notes |
+|---|---|---|
+| `booking_id` | text PK | `BK-1001`, … from `group_booking_id_seq` |
+| `group_id` | text FK → groups, **UNIQUE** | one booking per group |
+| `room_id` | text FK → rooms | |
+| `rooms_count`, `nights`, `total_inr`, `per_member_inr`, `members_count` | int | CHECK positive |
+| `booked_by` | text FK → travellers | |
+| `created_at` | timestamptz | |
+
+Booking does **not** change `availability` (the catalog stays read-only).
+
 ### `hotels` ← `data/catalog/hotels.json` (49 rows)
 | Column | Type | Notes |
 |---|---|---|
@@ -375,6 +410,7 @@ Migrations are in `backend/migrations/` and are managed by Knex. Knex runs each 
 | `20261113000003_traveller_id_sequence.js` | Adds `traveller_id_seq`, `next_traveller_id()` and PK default; initializes beyond current numeric maximum. `down` preserves rows and removes the default/function/sequence. |
 | `20261113000004_backfill_missing_travellers.js` | Inserts missing seeds without overwriting profiles; advances sequence without rewinding. `down` deliberately preserves potentially referenced seed records. |
 | `20261113000007_create_join_requests.js` | M5: `join_requests` table + `join_request_id_seq` (IDs `R-1001`+), unique (group, seeker), status/decided_at checks. `down` drops both. |
+| `20261113000008_create_group_hotels.js` | M6: `saved_hotel_options` (unique group+room+saver) and `group_bookings` (unique group, `group_booking_id_seq` → `BK-1001`+). `down` drops both tables and the sequence. |
 | `20261113000009_join_requests_removed_status.js` | Adds `REMOVED` to the `join_requests` status check. `down` converts REMOVED rows to REJECTED and restores the old check. |
 
 On a fresh database after `npm run migrate`, the row counts are: interests 16, travellers 24, groups 12, destinations 5, departure_cities 4, destination_links 8, destination_rules 1, hotels 49, rooms 125, availability 2,500.
@@ -454,7 +490,7 @@ All amounts are whole INR integers. There is no currency conversion.
 | M3 | Traveller search | persist searches → new `searches` table |
 | M4 | See matches | matching endpoint that uses the 6 rules above and returns the reason for each match |
 | M5 | Interest / approve / reject | new `join_requests` table (group, seeker, status `PENDING/APPROVED/REJECTED`); on approve, append to `groups.member_ids` |
-| M6 | Common Group Page | hotel search for a group's city/dates with availability + cost split; new `saved_hotel_options` and `group_bookings` tables |
+| M6 | Common Group Page | Implemented: members-only hotel search with availability + cost split, shortlist with alignment, one locked booking (`saved_hotel_options`, `group_bookings`) |
 | G1 | Filter results | interests / gender composition filters |
 | G2 | Member profiles | profile + groups-a-traveller-is-in endpoint |
 | S1 | Chat | `group_messages` table |

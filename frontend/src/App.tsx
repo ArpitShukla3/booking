@@ -29,6 +29,8 @@ const MyGroupsPage = lazy(() => import("@/features/groups/MyGroupsPage"));
 const GroupPage = lazy(() => import("@/features/groups/GroupPage"));
 const MyRequestsPage = lazy(() => import("@/features/groups/MyRequestsPage"));
 const TravellerProfilePage = lazy(() => import("@/features/profile/TravellerProfilePage"));
+const HotelDetailsPage = lazy(() => import("@/features/hotels/HotelDetailsPage"));
+const CreditsPage = lazy(() => import("@/features/hotels/CreditsPage"));
 function PageTitle() {
   const { pathname } = useLocation();
   useEffect(() => {
@@ -43,6 +45,10 @@ function PageTitle() {
               ? "My requests | Group Travel Matcher"
             : pathname.startsWith("/travellers/")
               ? "Traveller profile | Group Travel Matcher"
+            : pathname === "/credits"
+              ? "Photo credits | Group Travel Matcher"
+            : /^\/groups\/[^/]+\/hotels\//.test(pathname)
+              ? "Hotel | Group Travel Matcher"
             : pathname.startsWith("/groups/")
               ? "Group details | Group Travel Matcher"
               : "Group Match | Group Travel Matcher";
@@ -78,6 +84,8 @@ export default function App() {
             <Route path="/my-requests" element={<RequireTraveller><MyRequestsPage /></RequireTraveller>} />
             <Route path="/groups/:groupId" element={<GroupPage />} />
             <Route path="/travellers/:travellerId" element={<TravellerProfilePage />} />
+            <Route path="/groups/:groupId/hotels/:hotelId" element={<RequireTraveller><HotelDetailsPage /></RequireTraveller>} />
+            <Route path="/credits" element={<CreditsPage />} />
             <Route path="/group-match" element={<RequireTraveller><GroupDiscoveryPage /></RequireTraveller>} />
             <Route path="/group-match/groups/:group_id" element={<LegacyGroupRedirect />} />
             <Route

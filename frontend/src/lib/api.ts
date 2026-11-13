@@ -4,7 +4,8 @@ export class ApiError extends Error {
   fields: Record<string, string>;
   constructor(message: string, status: number, fields: Record<string, string> = {}) { super(message); this.name = 'ApiError'; this.status = status; this.fields = fields; }
 }
-export const apiClient = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4000', timeout: 10000, headers: { 'Content-Type': 'application/json' } });
+export const API_BASE_URL: string = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+export const apiClient = axios.create({ baseURL: API_BASE_URL, timeout: 10000, headers: { 'Content-Type': 'application/json' } });
 
 /**
  * Identity: every request carries the signed-in traveller's ID as `X-Traveller-Id`.

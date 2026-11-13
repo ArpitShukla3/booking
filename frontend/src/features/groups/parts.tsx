@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 import { stagger } from './media';
 import type { Group } from '@/types/group';
 import { stageLabel, tripSteps } from './tripFlow';
-import type { TripStep } from './tripFlow';
+import type { HotelProgress, TripStep } from './tripFlow';
 
 export function StagePill({ stage }: { stage: Group['stage'] }) {
   return (
@@ -33,8 +33,8 @@ function StepIcon({ step }: { step: TripStep }) {
 }
 
 /** The trip journey: posted → lobby filling → lobby complete → hotel fixed → booked. */
-export function TripProgress({ group, compact = false }: { group: Pick<Group, 'stage' | 'members_count' | 'max_size' | 'spots_left'>; compact?: boolean }) {
-  const steps = tripSteps(group);
+export function TripProgress({ group, compact = false, hotel }: { group: Pick<Group, 'stage' | 'members_count' | 'max_size' | 'spots_left'>; compact?: boolean; hotel?: HotelProgress }) {
+  const steps = tripSteps(group, hotel);
   const doneCount = steps.filter((s) => s.state === 'done').length;
   const progress = ((doneCount + (steps.some((s) => s.state === 'current') ? 0.5 : 0)) / steps.length) * 100;
   return (

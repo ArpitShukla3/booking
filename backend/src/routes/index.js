@@ -12,5 +12,6 @@ router.use('/groups', require('./groups.routes'));
 router.use('/departure-cities', require('./departureCities.routes'));
 router.use('/searches', require('./searches.routes'));
 router.use('/join-requests', require('./joinRequests.routes'));
+router.use('/groups/:groupId', require('./groupHotels.routes'));
 
 module.exports = router;
