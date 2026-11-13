@@ -1,5 +1,7 @@
 # Work split plan: 2 developers, 6 deliverables
 
+**M1 update, 2026-11-13:** Signup/login is implemented in `2b658a4` using the user-requested T-025 onward IDs and seven-day remembered identity. General lookups and other tracks remain planned; see TASK-M1 and project context.
+
 The problem statement has 6 Must-have deliverables (M1–M6). They are split into **two tracks of 3 tickets**. The split follows the two user flows in the problem statement, so each developer owns whole features end to end: DB tables, backend API, and frontend pages.
 
 | Track | Developer | Tickets | Owns |
@@ -28,22 +30,23 @@ The backend follows **router → controller → service → helper** (`Agent.md`
 - [ ] `src/middleware/currentTraveller.js`: reads the **`X-Traveller-Id`** header, loads the traveller through `helpers/postgres/travellers.helper.js` (`findById` only), and sets `req.traveller`. Exports `requireTraveller` (401 if the header is missing or the traveller is unknown).
 - [ ] `src/utils/dates.js`: pure date functions: `isInDataWindow(checkIn, checkOut)` (2027-04-01 ≤ in < out ≤ 2027-04-20), `nightsBetween(in, out)`, `listNights(in, out)`. All work on `YYYY-MM-DD` strings.
 - [ ] `src/utils/validate.js`: pure validators: `assertEnum`, `assertPositiveInt`, `assertDateRange`. A check that needs the DB (e.g. "city exists") belongs in a service, which calls `helpers/postgres/lookups.helper.js`.
-- [ ] Migration `<ts>_id_sequences.js`: creates `traveller_id_seq` and `group_id_seq`, both starting at **1001**.
+- [x] Traveller sequence/default migration `20261113000003_traveller_id_sequence.js`: starts beyond existing IDs (fresh signup T-025).
+- [ ] Group sequence remains a separate future M2 task.
 - [ ] Empty router/controller/service/helper files for both tracks, each owned by one dev (see §4).
 
 ### Frontend
-- [ ] Install `react-router-dom`. `src/App.tsx` holds the route table plus the layout (header with the current traveller's name and nav links).
-- [ ] `src/lib/api.ts`: a `fetch` wrapper. Base URL is `import.meta.env.VITE_API_URL` (default `http://localhost:4000`). It sends `X-Traveller-Id` automatically and throws the `{error}` shape as a typed error.
-- [ ] `src/store/session.ts`: Zustand store with `persist` (localStorage): `currentTravellerId`, `setCurrentTraveller`, `clear`. Remove the placeholder `useCounterStore.ts`.
-- [ ] `src/types/api.ts`: the shared TypeScript types from §3 (`Traveller`, `Group`, `Destination`, `Interest`, `ApiError`).
-- [ ] `.env.example` in the frontend with `VITE_API_URL`.
+- [x] Install `react-router-dom`. `src/App.tsx` holds the route table plus the layout (header with the current traveller's name and nav links).
+- [x] `src/lib/api.ts`: Axios client with typed API errors and a 10-second timeout. Base URL is `import.meta.env.VITE_API_URL` (default `http://localhost:4000`). Current ID endpoints pass the ID in the body/path. Header middleware for later business APIs remains planned.
+- [x] `src/store/useTravellerStore.ts`: real profile, ID, seven-day persistence/restore/expiry/logout. Sample identity is separate in `useDemoTravellerStore`; unused counter scaffold is preserved.
+- [x] Traveller/Interest DTOs in `src/types/traveller.ts`; `ApiError` in `src/lib/api.ts`. Discovery DTOs remain separate.
+- [x] `.env.example` in the frontend with `VITE_API_URL`.
 - [ ] **Dev shortcut** until M1 is done: opening the app with `?as=T-001` sets the current traveller. It stays as a debug feature.
 
 ### Decisions fixed in Phase 0 (write them in `Agent.md` §8)
 | Decision | Value |
 |---|---|
-| Identity | No auth. The client stores `currentTravellerId`. Every request sends the `X-Traveller-Id` header. |
-| New traveller IDs | `'T-' \|\| nextval('traveller_id_seq')` → `T-1001`, `T-1002`, … (seeded ones are `T-001`–`T-024`) |
+| Identity | Demo ID-only login; store `{traveller_id, expires_at}` for seven days and restore profile through the API. IDs are not secure credentials. |
+| New traveller IDs | DB `next_traveller_id()` → `T-025`, `T-026`, …, `T-1000`; minimum three digits, no row-count allocation |
 | New group IDs | `'G-' \|\| nextval('group_id_seq')` → `G-1001`, … (seeded ones are `G-01`–`G-12`) |
 | Enum values | Same as the data: `FEMALE`/`MALE`, `ANY`/`SAME_GENDER`, `PENDING`/`APPROVED`/`REJECTED` |
 | Money | Whole INR integers. Per-member cost is rounded to the nearest rupee. |
@@ -53,7 +56,7 @@ The backend follows **router → controller → service → helper** (`Agent.md`
 ## 2. Integration contract (fixed: change it only if both devs agree)
 
 ### 2.1 Current traveller
-The backend reads `X-Traveller-Id`. The frontend gets it from `useSession().currentTravellerId`. That is all either track needs from the other for identity.
+Use `useTravellerStore().travellerId` and `.traveller` for the real PostgreSQL profile. Current identity endpoints are public demo endpoints. `X-Traveller-Id` middleware for later business APIs remains planned. Sample discovery identity is explicitly separate.
 
 ### 2.2 Group object: the only shape both tracks use
 Track B returns it. Track A shows it on match cards.
@@ -90,6 +93,7 @@ Errors from every endpoint: `{ "error": { "message": string, "fields"?: { [field
 | GET | `/api/departure-cities` | M1 | |
 | POST | `/api/travellers` | M1 | sign up → `Traveller` |
 | GET | `/api/travellers` | M1 | for "continue as existing traveller" |
+| POST | `/api/travellers/sign-in` | M1 | implemented ID-only lookup; 404 if missing |
 | GET | `/api/travellers/:id` | M1 | B may call this to show member details |
 | POST | `/api/searches` 🔒 | M3 | saves and returns a search |
 | GET | `/api/searches` 🔒 | M3 | my recent searches |
@@ -107,6 +111,7 @@ Errors from every endpoint: `{ "error": { "message": string, "fields"?: { [field
 | POST | `/api/join-requests/:id/approve` 🔒 | M5 | owner only; transaction; 409 if full |
 | POST | `/api/join-requests/:id/reject` 🔒 | M5 | owner only |
 | GET | `/api/join-requests/mine` 🔒 | M5 | the seeker's requests + status |
+| GET | `/api/join-requests/incoming` 🔒 | M5 | owner notifications: pending requests on owned groups (added in M5) |
 | GET | `/api/groups/:id/hotels` 🔒 | M6 | members only; options with total + per-member cost |
 | GET / POST / DELETE | `/api/groups/:id/saved-options` 🔒 | M6 | shortlist + alignment |
 | GET / POST | `/api/groups/:id/booking` 🔒 | M6 | one booking per group; 409 if one already exists |

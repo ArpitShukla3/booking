@@ -7,9 +7,11 @@ import { EmptyState, ErrorState, PageContainer, Photo } from '@/components/share
 import { money, tripDates } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { groupService } from '@/services/groupService';
+import { joinRequestService } from '@/services/joinRequestService';
 import { useTravellerStore } from '@/store/useTravellerStore';
 import type { MyGroup } from '@/types/group';
 import { SeatBar, StagePill, TripProgress } from './parts';
+import { IncomingRequestsPanel } from './requestParts';
 import { cityPhoto, stagger } from './media';
 import { sizeLabel } from './schema';
 import './groups.css';
@@ -55,9 +57,9 @@ function GroupCard({ group, index }: { group: MyGroup; index: number }) {
       </div>
       <div className="gp-card-side">
         {owner ? (
-          <span className={`gp-badge ${group.pending_requests ? 'has-pending' : ''}`} aria-label={`${group.pending_requests} pending join requests`}>
+          <Link to={`/groups/${group.group_id}#join-requests`} className={`gp-badge ${group.pending_requests ? 'has-pending' : ''}`} aria-label={`${group.pending_requests} pending join requests for ${group.name}`}>
             <BellRing size={14} aria-hidden="true" />Requests <b>{group.pending_requests}</b>
-          </span>
+          </Link>
         ) : <span className="gp-badge">Hosted by {group.owner.name}</span>}
         <div className="gp-price">
           <small>Budget per person</small>
@@ -102,6 +104,7 @@ function ListSkeleton() {
 export default function MyGroupsPage() {
   const traveller = useTravellerStore((s) => s.traveller)!;
   const query = useAsync(() => groupService.listMyGroups(), `my-groups:${traveller.traveller_id}`);
+  const incoming = useAsync(() => joinRequestService.listIncoming(), `incoming:${traveller.traveller_id}`);
   const [tab, setTab] = useState<Tab>('ALL');
   const [stage, setStage] = useState<StageFilter>('ALL');
   const groups = useMemo(() => query.data ?? [], [query.data]);
@@ -124,6 +127,8 @@ export default function MyGroupsPage() {
         </div>
         <Button asChild size="lg"><Link to="/groups/new"><Plus size={16} aria-hidden="true" />Create a group</Link></Button>
       </div>
+
+      {incoming.data ? <IncomingRequestsPanel requests={incoming.data} /> : null}
 
       {query.loading ? <ListSkeleton />
         : query.error ? <ErrorState error={query.error} retry={query.retry} />

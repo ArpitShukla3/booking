@@ -1,13 +1,141 @@
 # Group Travel Matcher project context
 
-## Current summary
+## Current status: real traveller identity (2026-11-13)
+
+The latest M1 task adds real PostgreSQL signup and Traveller ID login to the existing
+Home/discovery implementation. Code is recorded in commit `2b658a4` on `main`;
+this documentation/task update follows it. Earlier discovery notes below are
+historical and remain preserved. No approval, hotel, booking or authentication
+framework was added.
+
+### Routes and API
+
+| Frontend route | Behavior |
+|---|---|
+| `/signup` | RHF/Zod profile form using the backend interest catalog; success shows generated ID, copy and dashboard actions |
+| `/login` | Traveller ID-only sign-in; preserves input on errors; no passwords/email/OTP |
+| `/dashboard` | Protected profile, ID copy, home city/airport, interests, Group Match navigation and logout |
+| `/` | Existing homepage for guests; restored signed-in users automatically open dashboard |
+
+| API | Success | Failure |
+|---|---|---|
+| POST `/api/travellers` | 201 complete saved profile | 400 fields, 409 ID conflict, 503 DB failure |
+| POST `/api/travellers/sign-in` | 200 existing profile | 400 invalid ID/body, 404 `Traveller ID not found`, 503 |
+| GET `/api/travellers/:traveller_id` | 200 saved profile | 400, 404, 503 |
+| GET `/api/interests` | 200 IDs/labels/categories from PostgreSQL | 503 |
+
+### Architecture and changed files
+
+- Backend keeps Express 5, Knex/pg, its singleton database client, text primary keys
+  and `text[]` interests. No Prisma was configured or introduced. New typed modules
+  run through `tsx`; existing CommonJS entrypoints/helpers/migrations stay compatible.
+- New `backend/src/{types/traveller,validation/travellers.validation,
+  services/travellers.service,controllers/travellers.controller}.ts` follow the
+  existing router → controller → service → helper layers.
+- New `src/helpers/postgres/travellers.helper.js` owns SQL; new traveller/interest
+  routers are mounted in `src/routes/index.js`. The helper never creates another client.
+- Added Zod, tsx, TypeScript and type definitions to backend package/lock files,
+  `backend/tsconfig.json`, typed start/dev/test scripts and `seed:travellers`.
+- Frontend adds Axios in package/lock files, `src/lib/api.ts` (10-second timeout,
+  readable HTTP/network errors), `src/services/travellerService.ts`,
+  `src/types/traveller.ts`, and `.env.example` with `VITE_API_URL`.
+- `src/features/identity/` contains schemas, LoginPage, SignupPage, CopyTravellerId,
+  DashboardPage and shared session lifecycle/route guard.
+- `src/lib/identityStorage.ts` owns parsing/clearing; `src/store/useTravellerStore.ts`
+  owns current profile, ID, deadline, initialization/loading/errors and actions:
+  signup, signInWithId, restoreSession, logout and ensureValidSession.
+- The original sample identity moved to `useDemoTravellerStore.ts`; discovery keeps
+  its own browser-local store and mock requests. Header/account navigation uses the
+  real profile and labels the sample selector explicitly. No new group logic was added.
+- Updated App routes, header and identity styling in `index.css`. Existing Home,
+  discovery and backend health behavior are preserved.
+- CORS example/default/local configuration allows both localhost:5173 and
+  127.0.0.1:5173; a regression test covers both (no wildcard origin).
+- Tests: backend traveller service/API tests; frontend identity store tests and
+  `tests/identity.spec.ts`; existing discovery test selector updated for the explicit
+  sample label. Earlier tests are retained.
+- Added and validated `.agents/skills/frontend-features/SKILL.md`; existing backend
+  skill is untouched. Updated AGENTS, Agent frontend/schema/API notes, M1/PLAN and
+  root/frontend/backend README instructions.
+
+### PostgreSQL changes
+
+New migration `20261113000003_traveller_id_sequence.js` creates `traveller_id_seq`,
+`next_traveller_id()` and the default on the existing `travellers.traveller_id`.
+Allocation starts above the existing numeric maximum: a fresh database's first
+signup is T-025. Padding uses at least three digits without truncating T-1000.
+`nextval` safely allocates concurrent IDs; no row-count generation is used.
+Rollback removes only the default/function/sequence and preserves profiles.
+
+New migration `20261113000004_backfill_missing_travellers.js` inserts missing
+catalog/traveller seeds with ON CONFLICT DO NOTHING; it never overwrites existing
+or user-created rows. It advances the sequence without rewinding. Its rollback
+intentionally preserves potentially referenced seed records. `npm run seed:travellers`
+provides the same idempotent maintenance behavior. Original migrations/data are
+unchanged; no columns were removed or renamed. Nullable legacy age values remain
+compatible, while new signup requires integer age 1–120. Home city is required
+text and home airport is a three-letter code, normalized to uppercase. Empty or
+single-interest profiles are permitted per the original M1 edge-case rule.
+
+### Exactly seven-day remembered identity
+
+Storage key: `group_match_active_traveller`.
+
+```json
+{ "traveller_id": "T-025", "expires_at": 1790000000000 }
+```
+
+The timestamp above is illustrative. Only successful signup or explicit login
+writes `Date.now() + 7 * 24 * 60 * 60 * 1000`. Refresh validates the record and
+fetches the profile without extending the timestamp. Expired/malformed records,
+impossible date values, oversized IDs and backend 404s clear identity. Backend or
+storage-read outages keep valid identity retryable rather than substituting a fake
+profile. The lifecycle checks open-tab timers, focus/visibility and cross-tab storage
+changes; identity-dependent dashboard actions call ensureValidSession.
+
+Logout clears client state/storage without deleting the account. Async operation
+versions prevent late restoration responses from reactivating a logged-out user.
+Failed identity writes invalidate an older record where possible and still show a
+successfully created profile/ID. If both storage removal and overwrite fail, the UI
+explains that logout succeeded only in the current tab and site storage needs clearing.
+This is demo identity: a Traveller ID is not a secure credential or authorization token.
+
+### Validation and known limits
+
+Executed checks: 27 backend unit + 16 PostgreSQL integration tests; 30 frontend
+unit/service tests; 20 Playwright tests including actual API signup/login and all
+prior discovery tests. Both TypeScript projects and the Vite production build are
+checked. Oxlint has the original Button Fast Refresh warning; ESLint is not configured.
+The new migrations were rolled down/up only in `booking_test`. A created T-025
+profile was fetched and signed in successfully before and after an actual API restart.
+The idempotent seed script was run with that new user present. No seed/user reset ran.
+
+Browser tests verify seven-day storage, refresh without renewal, logout without DB
+deletion, seeded/new IDs, unknown/deleted IDs, corrupted/expired storage, live-tab
+expiry using injected time, network errors/outage retry and 360px mobile layouts.
+Browser signup tests create a real `Rahul Browser Demo` profile in the configured
+development API; these permanent test profiles are not deleted. Backend integration
+records are isolated in `booking_test` and only their own generated rows are cleaned.
+
+Known limits: ID-only sign-in is intentionally not secure authentication; no ID
+recovery flow is implemented. Group discovery remains a separate labelled sample
+feature; real backend matching/approvals/bookings require their own tasks. Browser
+persistence can be disabled by browser policy; that condition is reported rather
+than pretending seven-day remembrance succeeded. PostgreSQL remains authoritative.
+
+Next recommended task: integrate real backend group discovery under a separate
+scope, reusing the delivered current-traveller contract. General destination and
+departure lookup endpoints from the larger original M1 plan remain deferred.
+
+
+## Earlier discovery delivery (historical context)
 
 The app now has a Booking.com-inspired Home Dashboard and a focused Group Match
 discovery frontend. It runs without a backend connection. The original backend
 and official data pack remain intact. Read `Agent.md` for their architecture and
 schema; this file records the separate frontend demo.
 
-The current user request supersedes an earlier, larger frontend brief. Signup,
+The discovery-phase user request superseded an earlier, larger frontend brief. Signup,
 group creation, approvals, hotel comparison, bookings and secondary booking-category
 pages are deliberately outside this delivery. Unfinished files from that earlier
 draft were removed before completion; no pre-existing working features were removed.
@@ -143,3 +271,7 @@ separate scoped tasks; they are not hidden unfinished features in this prototype
   teammate backend/test architecture, implemented Home and discovery directly in
   the existing frontend. Latest scope explicitly narrows the earlier full-journey
   brief. Changes remain uncommitted and unpushed as requested.
+
+- 2026-11-13 · `main` · `2b658a4`: real traveller signup/login, database sequence/backfill, exactly seven-day identity and protected dashboard; task/API/context/skill documentation completed afterwards. Original discovery history remains above.
+
+- 2026-11-13 · `main` · after pulling `938b633`: **M5 join requests**. Backend: `join_requests` table (migration `…07`), `joinRequests` router → controller → service → helper, transactional approval with a group row lock and size re-check, owner-only 403s, `GET /api/join-requests/incoming` for notifications, real `pending_requests` in My groups. Frontend routes: `/my-requests` (new, protected). Group details page shows an Interested button with disabled reasons (owner/member/full/pending/declined) for seekers, and a Join requests section for owners (seeker age, gender, home city, gender preference, interests with shared ones highlighted, Approve / Decline with confirmation). My groups shows a notification panel of who is interested; the header has a bell with the pending count and a My requests nav link. No new dependencies. Tests: backend 123 unit + 50 integration passing; frontend typecheck, Oxlint (0 errors) and Vitest 65 passing; Playwright M5 spec run against the real backend. Note: the dev DB was reset by `migrate:rollback --all` during this work, so app-created dev rows (T-025+, G-1001+, searches) were lost; verify migration `down` on the test DB in future.

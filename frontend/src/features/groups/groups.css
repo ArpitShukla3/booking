@@ -148,6 +148,42 @@
 .gp-flow--compact .gp-step-icon svg { width: 12px; height: 12px; }
 .gp-flow--compact .gp-step-text { padding: 0; font-size: 11px; }
 
+/* M5 join requests: status pills, owner request cards, notifications, Interested */
+.gp-status { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+.gp-status--pending { background: var(--warning-bg); color: #8a5a00; }
+.gp-status--approved { background: var(--success-bg); color: var(--success); }
+.gp-status--rejected { background: #fdecec; color: hsl(var(--destructive)); }
+.gp-requests { display: grid; gap: 12px; }
+.gp-request { border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: grid; gap: 10px; transition: box-shadow .2s ease, border-color .2s ease; }
+.gp-request.is-pending { border-color: var(--light-blue); background: var(--pale-blue); }
+.gp-request:hover { box-shadow: 0 4px 14px rgba(0,0,0,.08); }
+.gp-request h3 { font-size: 16px; }
+.gp-request-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--secondary-text); font-size: 13px; }
+.gp-request-meta > span { display: inline-flex; align-items: center; gap: 5px; }
+.gp-shared { color: var(--booking); font-weight: 700; }
+.gp-request-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gp-past summary { cursor: pointer; color: var(--action-blue); font-weight: 700; }
+.gp-past summary:focus-visible { outline: 2px solid var(--action-blue); outline-offset: 2px; border-radius: 3px; }
+a.gp-badge:hover { text-decoration: underline; }
+a.gp-badge:focus-visible { outline: 2px solid var(--action-blue); outline-offset: 2px; border-radius: 3px; }
+.gp-notify { padding: 16px 18px; margin: 18px 0 4px; border-left: 4px solid var(--search-yellow); }
+.gp-notify h2 { display: flex; align-items: center; gap: 8px; font-size: 18px; margin-bottom: 8px; }
+.gp-notify h2 svg { color: #d4111e; animation: gp-pop .45s ease both; }
+.gp-notify ul { list-style: none; margin: 0; padding: 0; display: grid; }
+.gp-notify-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.gp-notify-item:first-child { border-top: 0; }
+.gp-notify-item > div { flex: 1; }
+.gp-notify-item small { color: var(--secondary-text); }
+.gp-interest { display: grid; gap: 8px; margin-top: 14px; }
+.gp-interest .field-hint { margin: 0; }
+.gp-interest.is-pending button:disabled { opacity: 1; background: var(--warning-bg); color: #8a5a00; box-shadow: none; }
+.gp-interest.is-member button:disabled { opacity: 1; background: var(--success-bg); color: var(--success); box-shadow: none; }
+.gp-interest.is-rejected button:disabled { opacity: 1; background: #fdecec; color: hsl(var(--destructive)); box-shadow: none; }
+.gp-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.gp-chip { border: 1px solid var(--line); background: #fff; padding: 6px 14px; border-radius: 99px; font-weight: 700; color: var(--secondary-text); cursor: pointer; transition: background .2s, color .2s, border-color .2s; }
+.gp-chip[aria-pressed="true"] { background: var(--booking); border-color: var(--booking); color: #fff; }
+.gp-chip:focus-visible { outline: 2px solid var(--action-blue); outline-offset: 2px; }
+
 /* skeleton */
 .gp-skel { border-radius: 6px; background: linear-gradient(90deg, #eee 0, #f7f7f7 120px, #eee 240px); background-size: 800px 100%; animation: gp-shimmer 1.2s linear infinite; }
 
@@ -169,6 +205,7 @@
   .gp-date-box .field + .field { border-left: 0; border-top: 3px solid var(--search-yellow); }
   .gp-hero h1 { font-size: 24px; }
   .gp-flow--compact .gp-step-text { display: none; }
+  .gp-notify-item { flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) {
   .gp-page *, .gp-page *::before, .gp-page *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }

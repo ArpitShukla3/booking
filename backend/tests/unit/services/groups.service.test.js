@@ -1,6 +1,7 @@
 const { describe, it, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const groupsHelper = require('../../../src/helpers/postgres/groups.helper');
+const joinRequestsHelper = require('../../../src/helpers/postgres/joinRequests.helper');
 const lookupsHelper = require('../../../src/helpers/postgres/lookups.helper');
 const travellersHelper = require('../../../src/helpers/postgres/travellers.helper');
 const service = require('../../../src/services/groups.service.ts');
@@ -122,10 +123,18 @@ describe('groups.service reads', () => {
     assert.deepEqual(group.members.map((m) => m.traveller_id), ['T-001', 'T-002']);
   });
 
-  it('listMyGroups marks the role and pending_requests 0', async () => {
+  it('listMyGroups marks the role and counts pending requests only on owned groups', async () => {
     mock.method(groupsHelper, 'listForTraveller', async () => [row(), row({ group_id: 'G-02', owner_id: 'T-003', member_ids: ['T-003', 'T-001'] })]);
+    const count = mock.method(joinRequestsHelper, 'countPendingByGroups', async () => ({ 'G-1001': 2, 'G-02': 5 }));
     const groups = await service.listMyGroups('T-001');
     assert.deepEqual(groups.map((g) => g.my_role), ['OWNER', 'MEMBER']);
-    assert.ok(groups.every((g) => g.pending_requests === 0));
+    assert.deepEqual(count.mock.calls[0].arguments[0], ['G-1001']);
+    assert.deepEqual(groups.map((g) => g.pending_requests), [2, 0]);
+  });
+
+  it('listMyGroups shows 0 when an owned group has no pending requests', async () => {
+    mock.method(groupsHelper, 'listForTraveller', async () => [row()]);
+    mock.method(joinRequestsHelper, 'countPendingByGroups', async () => ({}));
+    assert.equal((await service.listMyGroups('T-001'))[0].pending_requests, 0);
   });
 });

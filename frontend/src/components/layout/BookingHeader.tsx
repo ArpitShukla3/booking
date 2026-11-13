@@ -10,6 +10,8 @@ import {
   UsersRound,
   CircleHelp,
   ChevronDown,
+  BellRing,
+  Inbox,
 } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -17,6 +19,7 @@ import { useDemoTravellerStore } from "@/store/useDemoTravellerStore";
 import { useAsync } from "@/lib/useAsync";
 import { MOCK_STORAGE_KEY } from "@/services/mock/storageKey";
 import { useTravellerStore } from "@/store/useTravellerStore";
+import { joinRequestService } from "@/services/joinRequestService";
 const categories = [
   { label: "Flights", icon: Plane },
   { label: "Flight + Hotel", icon: Luggage },
@@ -40,6 +43,12 @@ export function BookingHeader() {
     "sample-travellers",
   );
   const current = travellers?.find((t) => t.traveller_id === actor);
+  // Owner notifications: pending join requests on their groups, refreshed on every navigation.
+  const incoming = useAsync(
+    () => (account ? joinRequestService.listIncoming() : Promise.resolve([])),
+    `incoming:${account?.traveller_id ?? "-"}:${pathname}`,
+  );
+  const pendingCount = incoming.data?.length ?? 0;
   return (
     <header className="booking-header">
       <a href="#main-content" className="skip-link">
@@ -82,6 +91,7 @@ export function BookingHeader() {
             >
               <CircleHelp size={23} />
             </button>
+            {account ? <Link to="/my-groups" className="header-icon header-bell" aria-label={pendingCount ? `${pendingCount} new join request${pendingCount === 1 ? "" : "s"}` : "No new join requests"}><BellRing size={22} aria-hidden="true" />{pendingCount ? <span className="header-bell-count" aria-hidden="true">{pendingCount > 9 ? "9+" : pendingCount}</span> : null}</Link> : null}
             {account ? <><Link to="/dashboard" className="header-profile"><span className="avatar small">{account.name.charAt(0)}</span><span>{account.name}</span></Link><Button variant="outline" className="header-button" onClick={() => { useTravellerStore.getState().logout(); navigate('/login'); }}>Logout</Button></> : <><Button variant="outline" className="header-button" asChild><Link to="/signup">Register</Link></Button><Button variant="outline" className="header-button" asChild><Link to="/login">Sign in</Link></Button></>}
           </div>
         </div>
@@ -125,9 +135,18 @@ export function BookingHeader() {
               My groups
             </NavLink>
           ) : null}
+          {account ? (
+            <NavLink
+              to="/my-requests"
+              className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+            >
+              <Inbox size={20} aria-hidden="true" />
+              My requests
+            </NavLink>
+          ) : null}
         </nav>
       </div>
-      <div className="demo-strip" hidden={pathname === "/login" || pathname === "/signup" || pathname === "/dashboard" || pathname.startsWith("/group-match") || pathname.startsWith("/groups") || pathname === "/my-groups"}>
+      <div className="demo-strip" hidden={pathname === "/login" || pathname === "/signup" || pathname === "/dashboard" || pathname.startsWith("/group-match") || pathname.startsWith("/groups") || pathname === "/my-groups" || pathname === "/my-requests"}>
         <div className="page-container">
           <span>
             Group Travel Matcher{" "}

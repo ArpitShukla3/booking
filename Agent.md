@@ -109,7 +109,7 @@ To check that the backend works: `curl localhost:4000/api/health` should return 
 | `DB_HOST` / `DB_PORT` | `localhost` / `5432` | Postgres address. `DB_PORT` is also the host port in docker-compose. |
 | `DB_USER` / `DB_PASSWORD` / `DB_NAME` | `booking` / `booking` / `booking` | Credentials, shared by docker-compose and Knex |
 | `DATA_DIR` | `../hackathon-problem-3-group-travel-matcher` | Path to the data pack, relative to `backend/` |
-| `CORS_ORIGIN` | `http://localhost:5173` | Comma-separated list of allowed frontend origins |
+| `CORS_ORIGIN` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated list of allowed frontend origins |
 | `DB_NAME_TEST` | `<DB_NAME>_test` | Database the tests use. Selected automatically when `NODE_ENV=test`. Tests never touch the dev DB. |
 
 `.env` is git-ignored. If you add a variable, add it to `.env.example` and to this table too.
@@ -124,7 +124,7 @@ To open a psql shell: `docker exec -it booking-postgres psql -U booking -d booki
 
 | Piece | Choice | Notes |
 |---|---|---|
-| Runtime | Node.js, **CommonJS** (`require`) | Keep CommonJS: the Knex CLI and migrations use it |
+| Runtime | Node.js ≥22, CommonJS entrypoints | New M1 TypeScript validation/service/controller modules run via `tsx`; Knex helpers and migrations remain CommonJS |
 | HTTP | Express **5** | Errors thrown in async route handlers reach the error handler automatically |
 | DB | PostgreSQL 16 via `docker-compose.yml` | Container `booking-postgres`, volume `booking_pgdata` when using the example `.env` |
 | Query builder / migrations | Knex 3 + `pg` | Migration history table: `knex_migrations` |
@@ -136,7 +136,30 @@ Implemented so far:
 - A JSON 404 handler and a central error handler (`src/middleware/errorHandler.js`).
 - Graceful shutdown on SIGINT/SIGTERM (closes the DB pool).
 
-**No feature endpoints exist yet.** See the roadmap in section 9.
+M1 endpoints are implemented (demo ID-only identity, no passwords/server sessions):
+
+| Method | Path | Result |
+|---|---|---|
+| POST | `/api/travellers` | Validated profile creation; DB-generated ID; 201 with exact traveller fields |
+| POST | `/api/travellers/sign-in` | Existing profile only; 200 or 404 `Traveller ID not found` |
+| GET | `/api/travellers/:traveller_id` | Profile restoration; 200 or 404 |
+| GET | `/api/interests` | Official interest IDs, labels and categories from PostgreSQL |
+
+Invalid input returns 400 with `error.fields`; ID conflicts return 409; database
+failures return a readable 503. Remaining roadmap endpoints are unimplemented.
+
+M5 join-request endpoints (all need `X-Traveller-Id`; `joinRequests.{routes,controller,service,helper}`):
+
+| Method | Path | Result |
+|---|---|---|
+| POST | `/api/groups/:groupId/join-requests` | Seeker sends "Interested" → 201 `PENDING`. 409 for owner/member/full/already requested/rejected, 404 unknown group |
+| GET | `/api/groups/:groupId/join-requests` | Owner only (403 otherwise): requests with seeker profile + `shared_interests` with current members |
+| POST | `/api/join-requests/:requestId/approve` | Owner only. One transaction: lock group row, re-check size (409 "full"), append to `member_ids`, set `APPROVED` |
+| POST | `/api/join-requests/:requestId/reject` | Owner only → `REJECTED` (final; seeker cannot ask again) |
+| GET | `/api/join-requests/mine` | Seeker's requests with group summary and status |
+| GET | `/api/join-requests/incoming` | Owner notifications: pending requests on all owned groups |
+
+`GET /api/groups/mine` now returns the real `pending_requests` count for owned groups.
 
 ### 4.1 Backend architecture: router → controller → service → helper
 
@@ -262,6 +285,11 @@ Table names match the data-pack file names. Every ID is the stable text ID from 
 | `gender_preference` | text | CHECK: `ANY` or `SAME_GENDER`; default `ANY` |
 | `created_at`, `updated_at` | timestamptz | default `now()` |
 
+M1 storage addition: `traveller_id` has default `next_traveller_id()`, backed by
+`traveller_id_seq`. It remains a text PK; interests remain `text[]`. The API requires
+integer age 1–120, a home city and a three-letter airport. Existing nullable age
+values remain compatible; no profile columns were removed or renamed.
+
 ### `groups` ← `data/problem-3/groups.json` (12 rows)
 | Column | Type | Notes |
 |---|---|---|
@@ -277,6 +305,18 @@ Table names match the data-pack file names. Every ID is the stable text ID from 
 | `created_at`, `updated_at` | timestamptz | |
 
 Index on `city`. `GROUPS` is a non-reserved SQL keyword: `select * from groups` works in Postgres, but quoting it (`"groups"`) in raw SQL is the safe habit. Knex quotes it for you.
+
+### `join_requests` (M5, app-created)
+| Column | Type | Notes |
+|---|---|---|
+| `request_id` | text PK | `R-1001`, `R-1002`, … from `join_request_id_seq` |
+| `group_id` | text FK → groups | ON DELETE CASCADE |
+| `seeker_id` | text FK → travellers | ON DELETE CASCADE |
+| `status` | text | CHECK `PENDING` / `APPROVED` / `REJECTED` |
+| `created_at` | timestamptz | |
+| `decided_at` | timestamptz | NULL exactly while `PENDING` (CHECK) |
+
+UNIQUE (`group_id`, `seeker_id`): one request per seeker per group, so repeated clicks and re-requests after a rejection cannot add rows. Indexes on (`group_id`, `status`) and (`seeker_id`, `created_at`).
 
 ### `hotels` ← `data/catalog/hotels.json` (49 rows)
 | Column | Type | Notes |
@@ -331,8 +371,12 @@ Migrations are in `backend/migrations/` and are managed by Knex. Knex runs each 
 |---|---|
 | `20261113000001_create_tables.js` | Creates every table, constraint, and index in section 5. `down` drops them in reverse FK order. |
 | `20261113000002_seed_data_pack.js` | Reads the JSON files from `DATA_DIR/data/...` and inserts them. `destinations.json` is split into 4 tables and `price_per_night` is flattened. `availability` is inserted in batches of 500. `down` runs `TRUNCATE` on all seeded tables. |
+| `20261113000003_traveller_id_sequence.js` | Adds `traveller_id_seq`, `next_traveller_id()` and PK default; initializes beyond current numeric maximum. `down` preserves rows and removes the default/function/sequence. |
+| `20261113000004_backfill_missing_travellers.js` | Inserts missing seeds without overwriting profiles; advances sequence without rewinding. `down` deliberately preserves potentially referenced seed records. |
+| `20261113000007_create_join_requests.js` | M5: `join_requests` table + `join_request_id_seq` (IDs `R-1001`+), unique (group, seeker), status/decided_at checks. `down` drops both. |
 
-After `npm run migrate`, the row counts must be: interests 16, travellers 24, groups 12, destinations 5, departure_cities 4, destination_links 8, destination_rules 1, hotels 49, rooms 125, availability 2,500.
+On a fresh database after `npm run migrate`, the row counts are: interests 16, travellers 24, groups 12, destinations 5, departure_cities 4, destination_links 8, destination_rules 1, hotels 49, rooms 125, availability 2,500.
+Traveller count grows after signup; never reset existing data to 24 rows.
 Spot check from the data dictionary: `RM-KYO-001-A`, nights 2027-04-10 → 04-14 → `rooms_left` = 6, 2, 4, 3, 3.
 
 ### Migration rules (follow these when working with others)
@@ -403,7 +447,7 @@ All amounts are whole INR integers. There is no currency conversion.
 
 | ID | Feature | Backend work still needed |
 |---|---|---|
-| M1 | Sign up | `POST /api/travellers`, `GET /api/travellers/:id`; simple session (for example, the traveller ID kept on the client) |
+| M1 | Sign up / ID login | Implemented: real profile creation, interests API, ID sign-in, restoration, logout, seven-day identity. General destination/departure lookups remain deferred. |
 | M2 | Create group post | `POST /api/groups` with validation (city in `destinations`, dates in window, `max_size` 1–4) |
 | M3 | Traveller search | persist searches → new `searches` table |
 | M4 | See matches | matching endpoint that uses the 6 rules above and returns the reason for each match |
@@ -424,7 +468,8 @@ Each new table goes in a **new migration** (section 6).
 - Vite + React 19 + TypeScript, Zustand for state, shadcn-style UI (`components.json`, `src/components/ui/button.tsx`), lucide icons, `@` alias → `src/`.
 - Home (`/`), discovery (`/group-match`), and details (`/group-match/groups/:group_id`) are implemented. The counter store remains an unused scaffold artifact.
 - This frontend-only discovery phase explicitly uses separate sample-data snapshots and a temporary pure matching utility inside `src/services/mock/`. This is an exception for the browser demo; final production matching and persistence must move to the backend. No API calls are made by these pages.
-- Zustand stores only the active sample traveller ID. Pending Interested requests persist separately in browser localStorage; no approval or booking workflow exists in this phase.
+- Real account routes: `/signup`, `/login`, protected `/dashboard`. Axios loads signup interests/profiles from the backend. `useTravellerStore` manages seven-day identity without renewing on refresh.
+- `useDemoTravellerStore` retains the separate sample discovery identity. Pending Interested requests remain browser-local demo data; no approval/booking workflow exists.
 - See `AGENTS.md`, `docs/PROJECT_CONTEXT.md`, and `frontend/README.md` for frontend architecture and checks.
 - **Tailwind is pinned to 3.4.17. Do not upgrade to v4.**
 - Dev server: `http://localhost:5173`. This origin is already allowed by backend CORS.

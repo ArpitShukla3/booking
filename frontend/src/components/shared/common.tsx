@@ -123,12 +123,14 @@ export function ErrorState({
     </div>
   );
 }
-export function InterestTags({ values }: { values: string[] }) {
+/** `highlight` marks shared interests (blue tag + screen-reader text). */
+export function InterestTags({ values, highlight = [] }: { values: string[]; highlight?: string[] }) {
   return (
     <div className="tags">
       {values.map((i) => (
-        <span className="tag" key={i}>
+        <span className={highlight.includes(i) ? "tag blue" : "tag"} key={i}>
           {interestLabel(i)}
+          {highlight.includes(i) ? <span className="sr-only"> (shared)</span> : null}
         </span>
       ))}
     </div>

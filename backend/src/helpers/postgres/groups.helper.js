@@ -44,4 +44,23 @@ function listCandidatesByCity(city, trx = db) {
     .where('g.city', city);
 }
 
-module.exports = { insert, findById, listForTraveller, listCandidatesByCity };
+/** Locks the group row until the transaction ends (M5 approval re-checks the size under it). */
+function lockById(groupId, trx) {
+  return baseQuery(trx).where('g.group_id', groupId).forUpdate('g').first();
+}
+
+/**
+ * Appends a member if there is still room and they are not in yet.
+ * Returns the new member_ids, or undefined when nothing changed (full / already a member).
+ */
+async function addMember(groupId, travellerId, trx = db) {
+  const [row] = await trx('groups')
+    .where('group_id', groupId)
+    .whereRaw('NOT (? = ANY(member_ids))', [travellerId])
+    .whereRaw('cardinality(member_ids) < max_size')
+    .update({ member_ids: trx.raw('array_append(member_ids, ?)', [travellerId]) })
+    .returning('member_ids');
+  return row?.member_ids;
+}
+
+module.exports = { insert, findById, listForTraveller, listCandidatesByCity, lockById, addMember };

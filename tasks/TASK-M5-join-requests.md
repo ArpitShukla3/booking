@@ -36,12 +36,12 @@ A seeker clicks **"Interested"** on a group. The group owner sees the pending re
 - Membership is final once joined. There is no leave or remove step.
 
 ## Acceptance criteria
-- [ ] Demo Scenario B: Priya clicks Interested on G-01 → Sarah (as `T-001`) sees a badge with "1" → approves → Priya appears in the G-01 members (2/3), and G-01 shows 2/3 in matching.
-- [ ] Reject saves the status. The seeker sees "Declined" and cannot request again.
-- [ ] Every state survives a refresh and a backend restart.
-- [ ] A full group cannot receive new requests, and an approval that would go over `max_size` is refused.
-- [ ] Someone who is not the owner cannot approve or reject (403).
-- [ ] After approval, the seeker can open the Common Group Page (M6).
+- [x] Demo Scenario B: Priya clicks Interested on G-01 → Sarah (as `T-001`) sees a badge with "1" → approves → Priya appears in the G-01 members (2/3), and G-01 shows 2/3 in matching.
+- [x] Reject saves the status. The seeker sees "Declined" and cannot request again.
+- [x] Every state survives a refresh and a backend restart.
+- [x] A full group cannot receive new requests, and an approval that would go over `max_size` is refused.
+- [x] Someone who is not the owner cannot approve or reject (403).
+- [x] After approval, the seeker can open the Common Group Page (M6).
 
 ## Data
 - New table **`join_requests`**: request ID, group_id (FK → groups), seeker_id (FK → travellers), status (`PENDING`/`APPROVED`/`REJECTED`), created_at, decided_at. Unique (group_id, seeker_id).
@@ -51,5 +51,8 @@ A seeker clicks **"Interested"** on a group. The group owner sees the pending re
 ## Out of scope
 - Waitlists, cancelling a request, leaving a group
 
-## Execution plan
-_To be added later._
+## Execution plan / implementation (2026-11-13)
+- Backend: migration `20261113000007_create_join_requests.js`; `joinRequests.helper.js` → `joinRequests.service.ts` → `joinRequests.controller.ts` → `joinRequests.routes.js` (+ two routes in `groups.routes.js`). `groups.helper` gained `lockById` (SELECT … FOR UPDATE) and `addMember` (conditional `array_append`). Approval locks the group row, re-checks size and updates request + `member_ids` in one transaction.
+- Extra endpoint `GET /api/join-requests/incoming` feeds the owner notifications (header bell count, My groups panel).
+- Frontend: `joinRequestService.ts`, `features/groups/joinRequests.ts` (button state rules), `requestParts.tsx` (Interested panel, owner request cards with shared interests highlighted + decline confirmation, notifications panel), `MyRequestsPage.tsx` at `/my-requests`.
+- Tests: backend unit `joinRequests.service/controller` + updated `groups.service`, integration `joinRequests.api.test.js` (Scenario B, 409s, 403s, overflow, concurrent approvals); frontend Vitest `joinRequests.test.ts`, Playwright `tests/joinRequests.spec.ts`.

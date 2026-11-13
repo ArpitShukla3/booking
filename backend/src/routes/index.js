@@ -11,5 +11,6 @@ router.use('/destinations', require('./destinations.routes'));
 router.use('/groups', require('./groups.routes'));
 router.use('/departure-cities', require('./departureCities.routes'));
 router.use('/searches', require('./searches.routes'));
+router.use('/join-requests', require('./joinRequests.routes'));
 
 module.exports = router;

@@ -11,6 +11,7 @@ import { useTravellerStore } from '@/store/useTravellerStore';
 import type { GroupDetails } from '@/types/group';
 import type { Traveller } from '@/types/traveller';
 import { SeatBar, StagePill, TripProgress } from './parts';
+import { InterestPanel, OwnerRequestsSection } from './requestParts';
 import { cityPhoto, stagger } from './media';
 import { sizeLabel } from './schema';
 import './groups.css';
@@ -57,7 +58,7 @@ function DetailsSkeleton() {
   );
 }
 
-function GroupView({ group, created }: { group: GroupDetails; created: boolean }) {
+function GroupView({ group, created, reload }: { group: GroupDetails; created: boolean; reload: () => Promise<void> }) {
   const me = useTravellerStore((s) => s.travellerId);
   const photo = cityPhoto(group.city, 1600);
   const isOwner = me === group.owner.traveller_id;
@@ -94,6 +95,8 @@ function GroupView({ group, created }: { group: GroupDetails; created: boolean }
             {group.itinerary ? <p className="gp-itinerary">{group.itinerary}</p> : <p className="text-muted-foreground">The organiser hasn’t added an itinerary yet.</p>}
           </section>
 
+          {isOwner ? <OwnerRequestsSection group={group} onMembersChanged={reload} /> : null}
+
           <section className="card gp-section gp-rise" style={stagger(3)} aria-labelledby="members-h">
             <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
               <h2 id="members-h" style={{ margin: 0 }}>Who’s going · {group.members_count}/{group.max_size}</h2>
@@ -124,8 +127,9 @@ function GroupView({ group, created }: { group: GroupDetails; created: boolean }
             <p className="icon-line"><UsersRound size={15} aria-hidden="true" />{sizeLabel(group.max_size)} · {group.spots_left ? `${group.spots_left} spot${group.spots_left === 1 ? '' : 's'} left` : 'Group is full'}</p>
             <p className="icon-line"><CalendarDays size={15} aria-hidden="true" />{tripDates(group.check_in, group.check_out)}</p>
             <p className="icon-line"><Crown size={15} aria-hidden="true" />Organised by {group.owner.name}</p>
+            <InterestPanel group={group} />
             <div className="grid gap-2 mt-4">
-              {/* M5 adds "Interested" / pending requests here; M6 adds hotel search. */}
+              {/* M6 adds hotel search. */}
               <Button disabled title="Available once the group is complete (M6)"><Hotel size={16} aria-hidden="true" />Search hotels together</Button>
               <CopyLink />
             </div>
@@ -145,6 +149,10 @@ export default function GroupPage() {
   // Drop the one-time "created" flag so a refresh doesn't show the banner again.
   useEffect(() => { if (created) navigate(location.pathname, { replace: true, state: null }); }, [created, navigate, location.pathname]);
   const query = useAsync(() => groupService.getGroup(groupId), `group:${groupId}`);
+  // Refetched after an approval without the skeleton flash of query.retry().
+  const [fresh, setFresh] = useState<GroupDetails | null>(null);
+  const group = fresh?.group_id === query.data?.group_id ? fresh : query.data;
+  const reload = async () => { try { setFresh(await groupService.getGroup(groupId)); } catch { query.retry(); } };
   const notFound = query.error instanceof ApiError && query.error.status === 404;
 
   return (
@@ -156,8 +164,8 @@ export default function GroupPage() {
       </nav>
       {query.loading ? <DetailsSkeleton />
         : notFound ? <EmptyState title="Group not found" action={<Link className="text-link" to="/my-groups">Back to my groups</Link>}><p>There is no group with ID {groupId}.</p></EmptyState>
-        : query.error || !query.data ? <ErrorState error={query.error} retry={query.retry} />
-        : <GroupView group={query.data} created={created} />}
+        : query.error || !group ? <ErrorState error={query.error} retry={query.retry} />
+        : <GroupView group={group} created={created} reload={reload} />}
     </PageContainer>
   );
 }

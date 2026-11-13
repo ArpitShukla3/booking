@@ -57,3 +57,36 @@ src/helpers/postgres/<f>.helper.js all SQL (Knex); the only layer that touches t
 ## Endpoints
 
 - `GET /api/health` checks that the API and the database are up.
+
+
+## Traveller signup / ID login (M1)
+
+The new validation/service/controller modules are TypeScript loaded by `tsx`;
+existing CommonJS routes/helpers/Knex migrations stay compatible. No Prisma, passwords,
+JWT, OAuth or OTP are introduced. Node 24 is recommended (`nvm use` at repo root).
+
+| Method | Path | Success |
+|---|---|---|
+| POST | `/api/travellers` | 201 exact profile with DB-generated ID |
+| POST | `/api/travellers/sign-in` | 200 existing profile for `{traveller_id}` |
+| GET | `/api/travellers/:traveller_id` | 200 persisted profile |
+| GET | `/api/interests` | 200 official catalog from PostgreSQL |
+
+Validation returns 400 `error.fields`, missing IDs 404, ID conflict 409 and database
+failure 503. IDs are demo identity, not credentials. Seven-day remembrance is a client
+policy; expiry/logout does not delete profiles.
+
+Migrations 00003/00004 add a sequence/default and idempotent missing-seed backfill.
+`travellers` retains its schema and `text[]` interests. New IDs continue T-025 onward
+with at least three digits; gaps are normal, values past 999 are not truncated.
+Old migrations are unchanged. Seed backfill rollback intentionally retains data.
+
+```bash
+npm run migrate
+npm run seed:travellers  # optional idempotent repair; never overwrites profiles
+npm run typecheck
+npm test
+```
+
+Use `booking_test` for rollback/integration verification. Do not reset the development
+DB to run tests or expect exactly 24 travellers after users have registered.

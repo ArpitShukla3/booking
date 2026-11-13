@@ -1,4 +1,5 @@
 import groupsHelper = require('../helpers/postgres/groups.helper');
+import joinRequestsHelper = require('../helpers/postgres/joinRequests.helper');
 import lookupsHelper = require('../helpers/postgres/lookups.helper');
 import travellersHelper = require('../helpers/postgres/travellers.helper');
 import HttpError = require('../utils/HttpError');
@@ -77,10 +78,12 @@ async function getGroup(groupId: string): Promise<GroupDetails> {
 
 async function listMyGroups(travellerId: string): Promise<MyGroup[]> {
   const rows: GroupRow[] = await groupsHelper.listForTraveller(travellerId);
+  const owned = rows.filter((row) => row.owner_id === travellerId).map((row) => row.group_id);
+  const pending: Record<string, number> = await joinRequestsHelper.countPendingByGroups(owned);
   return rows.map((row) => ({
     ...toGroupDto(row),
     my_role: row.owner_id === travellerId ? 'OWNER' : 'MEMBER',
-    pending_requests: 0, // M5 replaces this with the real count
+    pending_requests: row.owner_id === travellerId ? pending[row.group_id] ?? 0 : 0,
   }));
 }
 
