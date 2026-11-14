@@ -1,0 +1,935 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Group Travel Matcher</title>
+<style>
+/* ---------- Booking blue + white ---------- */
+:root {
+  --bk-dark: #003580;      /* header, headings */
+  --bk-blue: #006ce4;      /* actions, accents */
+  --bk-light: #ebf3ff;     /* soft cards */
+  --bk-line: #c9ddf8;      /* thin borders */
+  --ink: #1a1a1a;
+  --muted: #5c6b80;
+  --white: #ffffff;
+  --stage-bg: #e8eef7;     /* around the slide */
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { background: var(--stage-bg); font-family: var(--font); color: var(--ink); overflow: hidden; }
+
+/* Fixed 1280x720 canvas, scaled to fit any screen */
+.deck { position: fixed; left: 50%; top: 50%; width: 1280px; height: 720px;
+  transform: translate(-50%, -50%) scale(var(--s, 1)); }
+.slide { position: absolute; inset: 0; background: var(--white); overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 53, 128, .18); opacity: 0; visibility: hidden; transition: opacity .35s ease; }
+.slide.is-active { opacity: 1; visibility: visible; }
+
+/* ---------- shared slide chrome ---------- */
+.bar { height: 92px; background: var(--bk-dark); color: var(--white); display: flex; align-items: center;
+  justify-content: space-between; padding: 0 48px; border-bottom: 5px solid var(--bk-blue); }
+.bar h2 { font-size: 34px; font-weight: 800; letter-spacing: -.3px; }
+.bar p { font-size: 17px; color: #b9d3fb; }
+.foot { position: absolute; left: 48px; right: 48px; bottom: 0; height: 52px; border-top: 1px solid var(--bk-line);
+  display: flex; align-items: center; justify-content: space-between; font-size: 14px; color: var(--muted); }
+.foot b { color: var(--bk-dark); }
+.foot .num { color: var(--bk-dark); font-weight: 800; }
+.body { position: absolute; top: 97px; left: 48px; right: 48px; bottom: 52px; padding: 26px 0 20px; }
+.label { font-size: 13px; font-weight: 800; letter-spacing: 1.4px; color: var(--bk-blue); text-transform: uppercase; }
+svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+/* entrance animation: children with .rise appear one after another (--d = order) */
+.rise { opacity: 0; }
+.is-active .rise { animation: rise .55s cubic-bezier(.2, .7, .2, 1) both; animation-delay: calc(var(--d, 0) * 110ms + 150ms); }
+@keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+.is-active .pop { animation: pop .5s cubic-bezier(.2, .9, .3, 1.3) both; animation-delay: calc(var(--d, 0) * 110ms + 150ms); }
+@keyframes pop { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+
+/* ---------- page 1: title ---------- */
+.s1 .hero, .s11 .hero { position: absolute; inset: 0 0 auto 0; height: 418px; background: var(--bk-dark); overflow: hidden; }
+.s1 .hero-text, .s11 .hero-text { position: absolute; left: 64px; top: 78px; color: var(--white); }
+.s1 .hero-text .label, .s11 .hero-text .label { color: #8fb8f5; font-size: 15px; }
+.s1 .hero-text h1, .s11 .hero-text h1 { font-size: 92px; line-height: .98; font-weight: 800; letter-spacing: -2.5px; margin-top: 14px; }
+.s1 .route, .s11 .route { position: absolute; right: 40px; top: 20px; width: 520px; height: 380px; }
+.s1 .route .ring, .s11 .route .ring { fill: none; stroke: #fff; stroke-width: 1.2; }
+.s1 .route .path, .s11 .route .path { fill: none; stroke: #fff; stroke-width: 2.4; stroke-dasharray: 7 8; opacity: .9; }
+.s1 .route .stop, .s11 .route .stop { fill: #fff; stroke: var(--bk-dark); stroke-width: 5; }
+.s1 .route .plane, .s11 .route .plane { fill: var(--bk-blue); stroke: #fff; stroke-width: 2.5; }
+.is-active.s1 .route .path, .is-active.s11 .route .path { animation: dash 2.2s linear infinite; }
+@keyframes dash { to { stroke-dashoffset: -30; } }
+.s1 .team, .s11 .team { position: absolute; left: 64px; top: 372px; width: 520px; height: 96px; background: var(--white);
+  border: 5px solid var(--bk-blue); border-radius: 12px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 18px 0 26px; box-shadow: 0 10px 30px rgba(0, 53, 128, .22); }
+.s1 .team small, .s11 .team small { display: block; font-size: 13px; font-weight: 800; letter-spacing: 1.4px; color: var(--muted); }
+.s1 .team strong, .s11 .team strong { display: block; font-size: 38px; color: var(--bk-dark); font-weight: 800; letter-spacing: -.5px; }
+.s1 .team .go, .s11 .team .go { width: 56px; height: 56px; border-radius: 8px; background: var(--bk-blue); color: #fff;
+  display: grid; place-items: center; font-size: 28px; }
+.s1 .foot, .s11 .foot { height: 82px; }
+.s1 .foot b, .s11 .foot b { font-size: 24px; }
+.s1 .foot .tick, .s11 .foot .tick { width: 72px; height: 6px; border-radius: 3px; background: var(--bk-blue); }
+
+/* ---------- page 2: customer-first ---------- */
+.journey { display: flex; align-items: flex-end; justify-content: center; gap: 0; margin: 4px 0 30px; }
+.j-group { display: flex; flex-direction: column; align-items: center; }
+.brace { width: 100%; height: 14px; border: 2px solid var(--muted); border-bottom: 0; border-radius: 8px 8px 0 0; margin-bottom: 10px; position: relative; }
+.brace-txt { font-size: 15px; color: var(--muted); margin-bottom: 8px; }
+.j-group.hot .brace { border-color: var(--bk-blue); }
+.j-group.hot .brace-txt { color: var(--bk-blue); font-weight: 800; }
+.j-row { display: flex; align-items: center; gap: 10px; }
+.pill { border: 2px solid var(--bk-line); border-radius: 999px; padding: 10px 22px; font-size: 17px; font-weight: 700; color: var(--muted); background: #fff; white-space: nowrap; }
+.pill.hot { background: var(--bk-blue); border-color: var(--bk-blue); color: #fff; display: flex; align-items: center; gap: 10px; }
+.j-arrow { color: var(--bk-line); font-size: 22px; display: flex; }
+.j-leap { width: 70px; height: 3px; margin: 0 8px 22px; align-self: flex-end;
+  background: repeating-linear-gradient(90deg, var(--bk-blue) 0 8px, transparent 8px 14px); position: relative; }
+.j-leap::after { content: ""; position: absolute; right: -4px; top: -6px; border: 7.5px solid transparent; border-left: 10px solid var(--bk-blue); border-right: 0; }
+
+.features { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
+.feat { border: 1.5px solid var(--bk-line); border-radius: 12px; padding: 18px 18px 20px; background: #fff; position: relative;
+  transition: transform .2s, box-shadow .2s, border-color .2s; }
+.feat:hover { transform: translateY(-4px); box-shadow: 0 12px 26px rgba(0, 53, 128, .12); border-color: var(--bk-blue); }
+.feat .ic { width: 46px; height: 46px; border-radius: 50%; background: var(--bk-light); color: var(--bk-blue); display: grid; place-items: center; font-size: 23px; margin-bottom: 14px; }
+.feat h3 { font-size: 20px; color: var(--bk-dark); font-weight: 800; margin-bottom: 8px; }
+.feat p { font-size: 15px; line-height: 1.45; color: #34404f; }
+.feat p b { color: var(--ink); }
+.feat.next { background: var(--bk-light); border: 2px dashed var(--bk-blue); }
+.feat.next .ic { background: #fff; }
+.tag { position: absolute; top: -11px; right: 14px; background: var(--bk-blue); color: #fff; font-size: 12px; font-weight: 800; letter-spacing: 1px; padding: 3px 10px; border-radius: 999px; }
+
+/* ---------- page 3: set-up ---------- */
+.cols { display: grid; grid-template-columns: 1.08fr 1fr; gap: 56px; height: 100%; }
+.tree { margin-top: 14px; font-size: 16px; }
+.tree li { list-style: none; display: grid; grid-template-columns: 290px 1fr; align-items: center; height: 33px; border-radius: 6px; padding-left: 6px; }
+.tree .name { font-family: var(--mono); font-weight: 700; color: var(--bk-dark); white-space: pre; }
+.tree .name i { font-style: normal; color: var(--bk-line); }
+.tree .what { color: var(--muted); }
+.tree li.root .name { font-size: 18px; }
+.tree li.key { background: var(--bk-light); }
+.tree li.key .what { color: var(--bk-dark); font-weight: 800; }
+.steps { margin-top: 14px; position: relative; }
+.steps::before { content: ""; position: absolute; left: 17px; top: 18px; bottom: 30px; width: 2px; background: var(--bk-line); }
+.step { display: grid; grid-template-columns: 36px 1fr; gap: 16px; align-items: start; height: 64px; position: relative; }
+.step .n { width: 36px; height: 36px; border-radius: 50%; background: var(--bk-blue); color: #fff; font-weight: 800; display: grid; place-items: center; font-size: 16px; }
+.step.ai .n { background: var(--bk-dark); }
+.step h4 { font-size: 19px; color: var(--bk-dark); font-weight: 800; line-height: 1.2; }
+.step p { font-size: 15px; color: var(--muted); margin-top: 2px; }
+.legend { display: flex; gap: 22px; font-size: 13px; color: var(--muted); margin-top: 4px; padding-left: 2px; }
+.legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--bk-blue); margin-right: 7px; }
+.legend span.ai::before { background: var(--bk-dark); }
+
+/* ---------- page 4: basic flow ---------- */
+.flow { display: grid; grid-template-columns: 1fr 44px 1fr 44px 1fr 44px 1fr; grid-template-rows: auto 44px auto; align-items: stretch; margin-top: 6px; }
+.fs { border: 1.5px solid var(--bk-line); border-radius: 12px; padding: 14px 16px; background: #fff; min-height: 128px; }
+.fs .top { display: flex; justify-content: space-between; align-items: center; color: var(--bk-blue); font-size: 24px; }
+.fs .top span { font-size: 13px; font-weight: 800; color: var(--muted); }
+.fs h3 { font-size: 19px; color: var(--bk-dark); font-weight: 800; margin: 8px 0 4px; }
+.fs p { font-size: 13.5px; color: var(--muted); line-height: 1.4; }
+.fs .who { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: var(--bk-blue); background: var(--bk-light); border-radius: 4px; padding: 2px 6px; margin-bottom: 4px; }
+.fs.key { border: 2.5px solid var(--bk-blue); box-shadow: 0 8px 22px rgba(0, 108, 228, .15); }
+.fs.end { background: var(--bk-blue); border-color: var(--bk-blue); }
+.fs.end, .fs.end h3, .fs.end .top, .fs.end .top span, .fs.end p { color: #fff; }
+.fs.end .who { background: rgba(255, 255, 255, .18); color: #fff; }
+.fa { display: grid; place-items: center; color: var(--bk-blue); font-size: 26px; }
+.note { margin-top: 26px; border: 2px dashed var(--bk-blue); background: var(--bk-light); border-radius: 12px; padding: 14px 20px; display: flex; align-items: center; gap: 14px; font-size: 16px; color: #34404f; }
+.note .ic { color: var(--bk-blue); font-size: 24px; display: flex; }
+.note b { color: var(--bk-dark); }
+
+/* ---------- page 5: choosing the hotel ---------- */
+.s5 .cols5 { display: grid; grid-template-columns: 0.92fr 1.08fr; gap: 40px; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+.tile { border: 1.5px solid var(--bk-line); border-radius: 12px; padding: 16px; background: #fff; transition: transform .2s, border-color .2s, box-shadow .2s; }
+.tile:hover { transform: translateY(-3px); border-color: var(--bk-blue); box-shadow: 0 10px 22px rgba(0, 53, 128, .1); }
+.tile .ic { width: 42px; height: 42px; border-radius: 50%; background: var(--bk-light); color: var(--bk-blue); display: grid; place-items: center; font-size: 21px; margin-bottom: 10px; }
+.tile h3 { font-size: 18px; color: var(--bk-dark); font-weight: 800; margin-bottom: 4px; }
+.tile p { font-size: 14px; line-height: 1.42; color: #34404f; }
+.tile .chip { display: inline-block; margin-top: 8px; font-size: 12px; font-weight: 800; color: var(--bk-blue); background: var(--bk-light); border-radius: 999px; padding: 3px 10px; }
+.rag { margin-top: 14px; background: var(--bk-light); border: 1.5px solid var(--bk-line); border-radius: 14px; padding: 18px 20px 14px; }
+.q { background: #fff; border: 3px solid var(--bk-blue); border-radius: 10px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; font-size: 17px; color: var(--ink); }
+.q svg { color: var(--muted); }
+.q .caret { width: 2px; height: 20px; background: var(--bk-blue); margin-left: -6px; }
+.is-active .q .caret { animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.wire { display: block; width: 100%; height: 30px; }
+.wire path { fill: none; stroke: var(--bk-blue); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-dasharray: 120; stroke-dashoffset: 120; }
+.is-active .wire path { animation: draw .7s ease forwards; animation-delay: calc(var(--d, 0) * 110ms + 150ms); }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.branches { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.br { background: #fff; border: 1.5px solid var(--bk-line); border-radius: 10px; padding: 11px 13px; }
+.br h4 { display: flex; align-items: center; gap: 8px; font-size: 16px; color: var(--bk-dark); font-weight: 800; }
+.br h4 svg { color: var(--bk-blue); font-size: 18px; }
+.br p { font-size: 13px; color: var(--muted); margin-top: 3px; line-height: 1.35; }
+.br mark { background: #dcebff; color: var(--bk-dark); font-weight: 700; border-radius: 3px; padding: 0 3px; }
+.rr { background: var(--bk-dark); color: #fff; border-radius: 10px; padding: 11px 14px; display: flex; align-items: center; gap: 12px; }
+.rr svg { font-size: 22px; color: #8fb8f5; }
+.rr b { font-size: 16px; }
+.rr span { font-size: 13px; color: #b9d3fb; }
+.hit { margin-top: 12px; background: #fff; border-radius: 10px; border: 1.5px solid var(--bk-line); padding: 11px 14px; display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; }
+.hit .rank { width: 28px; height: 28px; border-radius: 50%; background: var(--bk-blue); color: #fff; font-weight: 800; display: grid; place-items: center; font-size: 14px; }
+.hit p { font-size: 14.5px; line-height: 1.4; color: var(--ink); }
+.hit mark { background: #fff1c2; box-shadow: inset 0 -2px 0 #febb02; color: inherit; border-radius: 2px; padding: 0 2px; }
+.hit small { display: block; margin-top: 4px; font-size: 12px; color: var(--muted); }
+.offline { margin-top: 10px; font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+
+/* ---------- page 6: trust & profiles ---------- */
+.s6 .cols6 { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+.risk { display: grid; grid-template-columns: 1fr 86px 1fr; align-items: center; margin-top: 14px; }
+.side { border: 1.5px solid var(--bk-line); border-radius: 12px; padding: 12px 14px; background: #fff; }
+.side h4 { display: flex; align-items: center; gap: 8px; font-size: 16px; color: var(--bk-dark); font-weight: 800; }
+.side h4 svg { color: var(--bk-blue); font-size: 19px; }
+.side p { font-size: 13.5px; color: #34404f; margin-top: 4px; line-height: 1.38; }
+.side p svg { color: #c2410c; vertical-align: -2px; margin-right: 4px; }
+.mid { display: grid; place-items: center; }
+.mid span { width: 46px; height: 46px; border-radius: 50%; background: var(--bk-dark); color: #fff; display: grid; place-items: center; font-size: 22px; box-shadow: 0 0 0 6px var(--bk-light); }
+.is-active .mid span { animation: pulse 2.4s ease-in-out infinite 1.2s; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 12px rgba(0, 108, 228, .12); } }
+.profile { margin-top: 18px; border: 1.5px solid var(--bk-line); border-radius: 14px; padding: 16px 18px; background: #fff; box-shadow: 0 12px 28px rgba(0, 53, 128, .1); position: relative; }
+.profile .sample { position: absolute; top: -10px; left: 16px; background: #fff; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 1px; padding: 0 6px; }
+.p-head { display: grid; grid-template-columns: 56px 1fr 84px; gap: 14px; align-items: center; }
+.avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--bk-blue); color: #fff; font-size: 24px; font-weight: 800; display: grid; place-items: center; }
+.p-name { font-size: 20px; font-weight: 800; color: var(--bk-dark); display: flex; align-items: center; gap: 8px; }
+.verified { display: inline-flex; align-items: center; gap: 4px; background: var(--bk-blue); color: #fff; font-size: 11.5px; font-weight: 800; border-radius: 999px; padding: 3px 9px 3px 6px; }
+.verified svg { font-size: 15px; }
+.p-sub { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
+.ring { position: relative; width: 84px; height: 84px; }
+.ring svg { width: 84px; height: 84px; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 7; }
+.ring .bg { stroke: var(--bk-light); }
+.ring .fg { stroke: var(--bk-blue); stroke-linecap: round; stroke-dasharray: 213.6; stroke-dashoffset: 213.6; }
+.is-active .ring .fg { animation: fill 1.2s ease-out .9s forwards; }
+@keyframes fill { to { stroke-dashoffset: 17.1; } }
+.ring b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; color: var(--bk-dark); line-height: 1; text-align: center; }
+.ring b small { display: block; font-size: 10px; color: var(--muted); font-weight: 700; margin-top: 2px; }
+.kyc { display: flex; gap: 8px; margin: 12px 0 10px; flex-wrap: wrap; }
+.kyc span { font-size: 12.5px; font-weight: 700; color: #00703c; background: #e7f6ec; border-radius: 999px; padding: 3px 10px; }
+.p-review { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; border-top: 1px solid var(--bk-line); padding-top: 10px; font-size: 13.5px; color: #34404f; }
+.votes { display: flex; align-items: center; gap: 8px; font-weight: 800; color: var(--bk-dark); font-size: 13px; }
+.votes .up { color: var(--bk-blue); }
+.layers { margin-top: 14px; display: grid; gap: 12px; }
+.layer { display: grid; grid-template-columns: 44px 1fr auto; gap: 14px; align-items: center; border: 1.5px solid var(--bk-line); border-radius: 12px; padding: 12px 14px; background: #fff; }
+.layer .ic { width: 44px; height: 44px; border-radius: 10px; background: var(--bk-light); color: var(--bk-blue); display: grid; place-items: center; font-size: 22px; }
+.layer h4 { font-size: 17px; color: var(--bk-dark); font-weight: 800; }
+.layer p { font-size: 13.5px; color: #34404f; line-height: 1.38; margin-top: 2px; }
+.state { font-size: 11px; font-weight: 800; letter-spacing: 1px; border-radius: 999px; padding: 3px 9px; }
+.state.built { background: #e7f6ec; color: #00703c; }
+.state.next { background: var(--bk-blue); color: #fff; }
+.layer.next { border-style: dashed; border-color: var(--bk-blue); background: #f7fbff; }
+
+/* ---------- page 7: team chat ---------- */
+.s7 .cols7 { display: grid; grid-template-columns: 0.86fr 1.14fr; gap: 40px; }
+.chat { margin-top: 12px; border: 1.5px solid var(--bk-line); border-radius: 16px; overflow: hidden; background: #f5f8fc; box-shadow: 0 14px 30px rgba(0, 53, 128, .12); }
+.chat-top { background: var(--bk-dark); color: #fff; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; }
+.chat-top b { font-size: 15px; } .chat-top span { font-size: 12px; color: #b9d3fb; }
+.chat-body { padding: 12px 14px 6px; display: grid; gap: 8px; }
+.msg { max-width: 82%; background: #fff; border: 1px solid var(--bk-line); border-radius: 12px 12px 12px 4px; padding: 7px 11px; font-size: 13.5px; color: var(--ink); }
+.msg small { display: block; font-size: 11px; font-weight: 800; color: var(--bk-blue); margin-bottom: 1px; }
+.msg.me { justify-self: end; background: var(--bk-blue); border-color: var(--bk-blue); color: #fff; border-radius: 12px 12px 4px 12px; }
+.msg.me small { color: #cfe2ff; }
+.announce { background: #fff8e1; border: 1px solid #f5d77a; border-left: 4px solid #febb02; border-radius: 8px; padding: 7px 11px; font-size: 13.5px; display: flex; gap: 8px; align-items: flex-start; }
+.announce svg { color: #b7791f; font-size: 16px; margin-top: 2px; }
+.announce small { display: block; font-size: 11px; font-weight: 800; color: #8a5a00; }
+.poll { background: #fff; border: 1.5px solid var(--bk-blue); border-radius: 12px; padding: 9px 12px; }
+.poll h5 { font-size: 13.5px; color: var(--bk-dark); display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.poll h5 svg { color: var(--bk-blue); }
+.opt { position: relative; border-radius: 6px; background: var(--bk-light); height: 26px; margin-top: 5px; overflow: hidden; font-size: 12.5px; }
+.opt i { position: absolute; inset: 0 auto 0 0; width: 0; background: #b9d6fb; border-radius: 6px; }
+.opt.win i { background: #8fbdf8; }
+.is-active .opt i { transition: width 1s ease 1.6s; width: var(--w); }
+.opt em { font-style: normal; font-weight: 600; color: var(--muted); }
+.opt span { position: relative; display: flex; justify-content: space-between; padding: 0 9px; line-height: 26px; font-weight: 700; color: var(--bk-dark); }
+.poll small { display: block; margin-top: 5px; font-size: 11px; color: var(--muted); }
+.composer { display: flex; gap: 6px; padding: 8px 14px 12px; }
+.composer span { font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--bk-line); color: var(--muted); background: #fff; }
+.composer span.on { background: var(--bk-dark); border-color: var(--bk-dark); color: #fff; }
+.c-feats { margin-top: 12px; display: grid; gap: 10px; }
+.c-feat { display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: center; }
+.c-feat .ic { width: 40px; height: 40px; border-radius: 10px; background: var(--bk-light); color: var(--bk-blue); display: grid; place-items: center; font-size: 20px; }
+.c-feat h4 { font-size: 17px; color: var(--bk-dark); font-weight: 800; }
+.c-feat p { font-size: 13.5px; color: #34404f; }
+.wires { margin-top: 18px; display: grid; gap: 10px; }
+.lane { border: 1.5px solid var(--bk-line); border-radius: 12px; padding: 11px 14px; background: #fff; }
+.lane.next { border: 2px dashed var(--bk-blue); background: #f7fbff; }
+.lane-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.lane-top h4 { font-size: 15px; color: var(--bk-dark); font-weight: 800; display: flex; align-items: center; gap: 8px; }
+.lane-top h4 svg { color: var(--bk-blue); font-size: 18px; }
+.track { display: grid; grid-template-columns: auto 1fr auto 1fr auto; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; color: var(--bk-dark); }
+.track .box { border: 1px solid var(--bk-line); border-radius: 6px; padding: 3px 8px; background: var(--bk-light); }
+.line { position: relative; height: 2px; background: var(--bk-line); }
+.line::after { content: ""; position: absolute; top: -4px; left: 0; width: 10px; height: 10px; border-radius: 50%; background: var(--bk-blue); opacity: 0; }
+.is-active .line.poll-l::after { animation: hop 2s ease-in-out infinite 1s; }
+.is-active .line.push-l::after { animation: hop .9s linear infinite 1s; }
+@keyframes hop { 0% { left: 0; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { left: calc(100% - 10px); opacity: 0; } }
+.line.back::after { left: auto; right: 0; }
+.lane p { font-size: 12.5px; color: var(--muted); margin-top: 7px; }
+.lane code { font-family: var(--mono); font-size: 12px; color: var(--bk-dark); background: var(--bk-light); padding: 1px 5px; border-radius: 4px; }
+
+/* ---------- page 8: group photos ---------- */
+.s8 .vs { display: grid; grid-template-columns: 1fr 64px 1fr; align-items: stretch; margin-top: 10px; }
+.panel { border: 1.5px solid var(--bk-line); border-radius: 14px; padding: 10px 18px; background: #fff; display: grid; grid-template-columns: 150px 1fr; gap: 16px; align-items: center; }
+.panel.good { border-color: var(--bk-blue); background: #f7fbff; }
+.panel h4 { font-size: 17px; color: var(--bk-dark); font-weight: 800; }
+.panel p { font-size: 13.5px; color: #34404f; margin-top: 4px; line-height: 1.4; }
+.panel .big { font-size: 30px; font-weight: 800; color: #c2410c; line-height: 1.1; margin-top: 6px; }
+.panel.good .big { color: var(--bk-blue); }
+.panel .big small { display: block; font-size: 13px; color: var(--muted); font-weight: 700; margin-top: 2px; }
+.vs .arrow { display: grid; place-items: center; color: var(--bk-blue); font-size: 30px; }
+.net { width: 150px; height: 120px; }
+.net .ln { stroke: #f0a37a; stroke-width: 1.6; fill: none; stroke-dasharray: 160; stroke-dashoffset: 160; }
+.net .ln.ok { stroke: var(--bk-blue); stroke-width: 2; }
+.is-active .net .ln { animation: draw2 .8s ease forwards; animation-delay: calc(var(--d, 0) * 110ms + 300ms); }
+@keyframes draw2 { to { stroke-dashoffset: 0; } }
+.net .node { fill: #fff; stroke: var(--bk-dark); stroke-width: 2; }
+.net .hub { fill: var(--bk-blue); }
+.net .pkt { fill: var(--bk-blue); opacity: 0; }
+.is-active .net .pkt { animation: pkt 1.8s ease-in infinite 1.4s; }
+@keyframes pkt { 0% { opacity: 0; transform: translate(0, 0); } 20% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--tx), var(--ty)); } }
+.pipe { margin-top: 14px; border: 1.5px solid var(--bk-line); border-radius: 14px; padding: 12px 16px; background: #fff; }
+.pipe.next { border: 2px dashed var(--bk-blue); background: #f7fbff; margin-top: 10px; }
+.pipe-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; }
+.pipe-top h4 { font-size: 15px; font-weight: 800; color: var(--bk-dark); }
+.pipe-row { display: flex; align-items: stretch; gap: 8px; }
+.pstep { flex: 1; border-radius: 10px; background: var(--bk-light); padding: 7px 10px; }
+.pipe.next .pstep { background: #fff; border: 1px solid var(--bk-line); }
+.pstep b { display: flex; align-items: center; gap: 7px; font-size: 14.5px; color: var(--bk-dark); }
+.pstep b svg { color: var(--bk-blue); font-size: 17px; }
+.pstep span { display: block; font-size: 12.5px; color: var(--muted); margin-top: 3px; line-height: 1.35; }
+.pstep code { display: block; margin-top: 5px; font-family: var(--mono); font-size: 11px; color: var(--bk-dark); background: #fff; border: 1px solid var(--bk-line); border-radius: 5px; padding: 3px 6px; word-break: break-all; line-height: 1.35; }
+.pipe.next .pstep code { background: var(--bk-light); }
+.pstep code i { font-style: normal; color: var(--bk-blue); }
+.keys { margin-top: 8px; font-family: var(--mono); font-size: 12px; color: var(--bk-dark); background: var(--bk-light); border-radius: 6px; padding: 5px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pipe.next .keys { background: #fff; border: 1px solid var(--bk-line); }
+.keys i { font-style: normal; color: var(--bk-blue); }
+.keys .k { font-family: var(--font); font-weight: 800; color: var(--muted); font-size: 11px; letter-spacing: .8px; margin-right: 8px; }
+.pipe-row > .to { display: grid; place-items: center; color: var(--bk-blue); font-size: 16px; flex: none; }
+.pipe.next .pipe-row { gap: 5px; }
+.pipe.next .pstep b { font-size: 13.5px; gap: 6px; }
+.pipe.next .pstep span { font-size: 12px; }
+
+/* ---------- pages 9-10: demo videos ---------- */
+.vid-wrap { position: absolute; top: 18px; bottom: 16px; left: 0; right: 0; display: grid; place-items: center; }
+.vid { height: 100%; aspect-ratio: 16 / 10; border-radius: 14px; overflow: hidden; background: #0b1a33; border: 1.5px solid var(--bk-line);
+  box-shadow: 0 16px 36px rgba(0, 53, 128, .18); position: relative; }
+.vid video { width: 100%; height: 100%; display: block; object-fit: contain; background: #0b1a33; }
+.vid .hint { position: absolute; left: 12px; top: 12px; background: rgba(0, 53, 128, .85); color: #fff; font-size: 12px; font-weight: 700;
+  border-radius: 999px; padding: 4px 10px; pointer-events: none; transition: opacity .3s; }
+.vid.playing .hint { opacity: 0; }
+
+/* ---------- page 11: thank you ---------- */
+.s11 .hero { height: 470px; }
+.s11 .hero-text { top: 120px; }
+.s11 .hero-text h1 { font-size: 112px; }
+.s11 .hero-text p { font-size: 26px; color: #b9d3fb; margin-top: 18px; font-weight: 600; }
+.s11 .team { top: 424px; }
+
+/* ---------- controls ---------- */
+.progress { position: fixed; left: 0; bottom: 0; height: 4px; background: var(--bk-blue); transition: width .35s ease; }
+.nav { position: fixed; right: 16px; bottom: 14px; display: flex; gap: 6px; opacity: 0; transition: opacity .3s; }
+body.show-nav .nav { opacity: 1; }
+.nav button { width: 38px; height: 38px; border-radius: 8px; border: 1px solid var(--bk-line); background: #fff; color: var(--bk-dark);
+  font-size: 18px; cursor: pointer; display: grid; place-items: center; }
+.nav button:hover { background: var(--bk-light); }
+.nav button:focus-visible { outline: 3px solid var(--bk-blue); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rise, .is-active .rise, .is-active .pop { animation: none; opacity: 1; }
+  .is-active.s1 .route .path { animation: none; }
+  .slide { transition: none; }
+}
+</style>
+</head>
+<body>
+<main class="deck" id="deck" aria-live="polite">
+
+  <!-- ================= 1. Title ================= -->
+  <section class="slide s1" aria-label="Title">
+    <div class="hero">
+      <div class="hero-text">
+        <div class="label rise" style="--d:0">Theme</div>
+        <h1 class="rise" style="--d:1">Group Travel<br>Matcher</h1>
+      </div>
+      <svg class="route" viewBox="0 0 520 380" aria-hidden="true">
+        <circle class="ring" cx="300" cy="190" r="175" opacity=".12"/>
+        <circle class="ring" cx="300" cy="190" r="120" opacity=".16"/>
+        <circle class="ring" cx="300" cy="190" r="65" opacity=".22"/>
+        <path id="route" class="path" d="M110 70 C 260 60, 430 120, 420 190 S 240 300, 250 330"/>
+        <circle class="stop" cx="110" cy="70" r="10"/>
+        <circle class="stop" cx="420" cy="190" r="10"/>
+        <circle class="stop" cx="250" cy="330" r="10"/>
+        <circle class="plane" r="9">
+          <animateMotion dur="6s" repeatCount="indefinite" rotate="auto"><mpath href="#route"/></animateMotion>
+        </circle>
+      </svg>
+    </div>
+    <div class="team pop" style="--d:3">
+      <div><small>Team</small><strong>Md Team</strong></div>
+      <div class="go"><svg class="i"><use href="#i-arrow-right"/></svg></div>
+    </div>
+    <footer class="foot"><b>Booking Holdings</b><span class="tick"></span></footer>
+  </section>
+
+  <!-- ================= 2. Customer-first ================= -->
+  <section class="slide" aria-label="We started from the traveller">
+    <header class="bar"><h2>We started from the traveller</h2><p>Forming a group is only half the trip</p></header>
+    <div class="body">
+      <div class="journey">
+        <div class="j-group rise" style="--d:0">
+          <div class="brace-txt">the group is formed: most platforms stop here</div>
+          <div class="brace"></div>
+          <div class="j-row">
+            <span class="pill">Find a group</span><span class="j-arrow"><svg class="i"><use href="#i-arrow-right"/></svg></span>
+            <span class="pill">Get approved</span><span class="j-arrow"><svg class="i"><use href="#i-arrow-right"/></svg></span>
+            <span class="pill">Book together</span>
+          </div>
+        </div>
+        <div class="j-leap rise" style="--d:1"></div>
+        <div class="j-group hot pop" style="--d:2">
+          <div class="brace-txt">where we kept going</div>
+          <div class="brace"></div>
+          <span class="pill hot"><svg class="i"><use href="#i-users"/></svg>Travel as a team</span>
+        </div>
+      </div>
+      <div class="features">
+        <article class="feat rise" style="--d:3">
+          <div class="ic"><svg class="i"><use href="#i-chat"/></svg></div>
+          <h3>Plan together</h3>
+          <p>Team <b>chat</b> after booking, <b>polls</b> to decide (“Which day for Mt Fuji?”) and organiser <b>announcements</b>.</p>
+        </article>
+        <article class="feat rise" style="--d:4">
+          <div class="ic"><svg class="i"><use href="#i-images"/></svg></div>
+          <h3>Memories</h3>
+          <p>A private <b>group gallery</b>: members share trip photos with captions.</p>
+        </article>
+        <article class="feat rise" style="--d:5">
+          <div class="ic"><svg class="i"><use href="#i-search"/></svg></div>
+          <h3>Right review first</h3>
+          <p><b>Contextual reviews</b>: ask “Is it quiet at night?” and the most relevant lines come up first.</p>
+        </article>
+        <article class="feat rise" style="--d:6">
+          <div class="ic"><svg class="i"><use href="#i-shield"/></svg></div>
+          <h3>Feel safer</h3>
+          <p>See who you travel with: a <b>profile</b>, <b>ratings</b>, reviews from past trips, and ▲ / ▼ <b>votes</b> so honest reviews rise.</p>
+        </article>
+        <article class="feat next rise" style="--d:7">
+          <span class="tag">NEXT</span>
+          <div class="ic"><svg class="i"><use href="#i-id"/></svg></div>
+          <h3>Scam checker</h3>
+          <p><b>KYC</b> with passport or Aadhaar before joining a group. Verified travellers get a badge; fake or flagged profiles are filtered out.</p>
+        </article>
+      </div>
+    </div>
+    <footer class="foot"><span><b>Booking Holdings</b> · Group Travel Matcher</span><span class="num">2</span></footer>
+  </section>
+
+  <!-- ================= 3. Set-up ================= -->
+  <section class="slide" aria-label="Set-up">
+    <header class="bar"><h2>Set-up</h2><p>Simple tools we know, plus AI that follows our rules</p></header>
+    <div class="body">
+      <div class="cols">
+        <div>
+          <div class="label">Backend layout</div>
+          <ul class="tree">
+            <li class="root rise" style="--d:0"><span class="name">backend/</span></li>
+            <li class="rise" style="--d:1"><span class="name"><i>├─ </i>docker-compose.yml</span><span class="what">Postgres + MinIO (Docker)</span></li>
+            <li class="rise" style="--d:2"><span class="name"><i>├─ </i>migrations/</span><span class="what">tables + data pack</span></li>
+            <li class="rise" style="--d:3"><span class="name"><i>├─ </i>src/</span><span class="what">the Express API</span></li>
+            <li class="rise" style="--d:4"><span class="name"><i>│  ├─ </i>routes/</span><span class="what">URL + auth → controller</span></li>
+            <li class="rise" style="--d:5"><span class="name"><i>│  ├─ </i>middleware/</span><span class="what">who is calling, errors</span></li>
+            <li class="rise" style="--d:6"><span class="name"><i>│  ├─ </i>controllers/</span><span class="what">HTTP in / out only</span></li>
+            <li class="rise" style="--d:7"><span class="name"><i>│  ├─ </i>validation/</span><span class="what">Zod input rules</span></li>
+            <li class="key rise" style="--d:8"><span class="name"><i>│  ├─ </i>services/</span><span class="what">all business rules</span></li>
+            <li class="rise" style="--d:9"><span class="name"><i>│  ├─ </i>helpers/</span><span class="what">all SQL, S3 + search</span></li>
+            <li class="rise" style="--d:10"><span class="name"><i>│  └─ </i>types/ utils/</span><span class="what">shared types, pure code</span></li>
+            <li class="rise" style="--d:11"><span class="name"><i>├─ </i>data/reviews/</span><span class="what">offline review index</span></li>
+            <li class="rise" style="--d:12"><span class="name"><i>└─ </i>tests/</span><span class="what">unit + integration</span></li>
+          </ul>
+        </div>
+        <div>
+          <div class="label">How we built it</div>
+          <div class="steps">
+            <div class="step rise" style="--d:1"><span class="n">1</span><div><h4>Pick what we know</h4><p>PostgreSQL + Express: simple and proven</p></div></div>
+            <div class="step rise" style="--d:3"><span class="n">2</span><div><h4>Backend on Node.js</h4><p>Postgres and MinIO pulled in via Docker</p></div></div>
+            <div class="step rise" style="--d:5"><span class="n">3</span><div><h4>Frontend UI</h4><p>Vite + Tailwind + shadcn + Zustand</p></div></div>
+            <div class="step ai rise" style="--d:7"><span class="n">4</span><div><h4>Skills for Claude Code</h4><p>backend + frontend skills keep AI work on-theme</p></div></div>
+            <div class="step ai rise" style="--d:9"><span class="n">5</span><div><h4>Playwright MCP</h4><p>AI tests the frontend in a real browser</p></div></div>
+            <div class="step ai rise" style="--d:11"><span class="n">6</span><div><h4>Claude Remote Control</h4><p>kept the dev work alive throughout the day</p></div></div>
+          </div>
+          <div class="legend rise" style="--d:12"><span>tech stack</span><span class="ai">AI workflow</span></div>
+        </div>
+      </div>
+    </div>
+    <footer class="foot"><span><b>Booking Holdings</b> · Group Travel Matcher</span><span class="num">3</span></footer>
+  </section>
+
+  <!-- ================= 4. Basic flow ================= -->
+  <section class="slide" aria-label="The basic flow">
+    <header class="bar"><h2>The basic flow</h2><p>From sign-up to a fair cost split</p></header>
+    <div class="body">
+      <div class="flow">
+        <!-- row 1: 1 → 4 -->
+        <div class="fs rise" style="--d:0;grid-area:1/1"><div class="top"><svg class="i"><use href="#i-user-plus"/></svg><span>01</span></div><h3>Sign up</h3><span class="who">everyone</span><p>Traveller ID, no password</p></div>
+        <div class="fa rise" style="--d:1;grid-area:1/2"><svg class="i"><use href="#i-arrow-right"/></svg></div>
+        <div class="fs rise" style="--d:1;grid-area:1/3"><div class="top"><svg class="i"><use href="#i-edit"/></svg><span>02</span></div><h3>Create a group post</h3><span class="who">organiser</span><p>city, dates, size, budget</p></div>
+        <div class="fa rise" style="--d:2;grid-area:1/4"><svg class="i"><use href="#i-arrow-right"/></svg></div>
+        <div class="fs key rise" style="--d:2;grid-area:1/5"><div class="top"><svg class="i"><use href="#i-search"/></svg><span>03</span></div><h3>Find &amp; rank groups</h3><span class="who">seeker</span><p><b>Swappable strategies</b>: today 6 rules + a score</p></div>
+        <div class="fa rise" style="--d:3;grid-area:1/6"><svg class="i"><use href="#i-arrow-right"/></svg></div>
+        <div class="fs rise" style="--d:3;grid-area:1/7"><div class="top"><svg class="i"><use href="#i-send"/></svg><span>04</span></div><h3>Request to join</h3><span class="who">seeker</span><p>“Interested” + a note</p></div>
+        <!-- turn -->
+        <div class="fa rise" style="--d:4;grid-area:2/7"><svg class="i"><use href="#i-arrow-down"/></svg></div>
+        <!-- row 2: 5 → 8, right to left -->
+        <div class="fs rise" style="--d:4;grid-area:3/7"><div class="top"><svg class="i"><use href="#i-check"/></svg><span>05</span></div><h3>Organiser approves</h3><span class="who">organiser</span><p>approve or reject</p></div>
+        <div class="fa rise" style="--d:5;grid-area:3/6"><svg class="i"><use href="#i-arrow-left"/></svg></div>
+        <div class="fs rise" style="--d:5;grid-area:3/5"><div class="top"><svg class="i"><use href="#i-users"/></svg><span>06</span></div><h3>Group formed</h3><span class="who">members</span><p>shared group page</p></div>
+        <div class="fa rise" style="--d:6;grid-area:3/4"><svg class="i"><use href="#i-arrow-left"/></svg></div>
+        <div class="fs rise" style="--d:6;grid-area:3/3"><div class="top"><svg class="i"><use href="#i-hotel"/></svg><span>07</span></div><h3>Hotel selected</h3><span class="who">members</span><p>shortlist, then book once</p></div>
+        <div class="fa rise" style="--d:7;grid-area:3/2"><svg class="i"><use href="#i-arrow-left"/></svg></div>
+        <div class="fs end pop" style="--d:8;grid-area:3/1"><div class="top"><svg class="i"><use href="#i-calc"/></svg><span>08</span></div><h3>Cost split</h3><span class="who">fair share</span><p>₹23,800 for two → ₹11,900 each</p></div>
+      </div>
+      <div class="note rise" style="--d:10">
+        <span class="ic"><svg class="i"><use href="#i-key"/></svg></span>
+        <span><b>Left out on purpose:</b> role-based access (admins, moderators) is a single prompt away with our skills. We skipped it to spend the time on the extended features.</span>
+      </div>
+    </div>
+    <footer class="foot"><span><b>Booking Holdings</b> · Group Travel Matcher</span><span class="num">4</span></footer>
+  </section>
+
+  <!-- ================= 5. Choosing the hotel ================= -->
+  <section class="slide s5" aria-label="Choosing the hotel">
+    <header class="bar"><h2>Choosing the hotel</h2><p>Everything a group needs to decide, on one page</p></header>
+    <div class="body">
+      <div class="cols5">
+        <div>
+          <div class="label">The hotel page</div>
+          <div class="tiles">
+            <article class="tile rise" style="--d:0">
+              <div class="ic"><svg class="i"><use href="#i-heart"/></svg></div>
+              <h3>Wishlist</h3>
+              <p>Members save rooms to a shared group shortlist.</p>
+              <span class="chip">2 of 3 saved this</span>
+            </article>
+            <article class="tile rise" style="--d:1">
+              <div class="ic"><svg class="i"><use href="#i-pin"/></svg></div>
+              <h3>On the map</h3>
+              <p>Every hotel pinned on an OpenStreetMap map with its area.</p>
+              <span class="chip">Gion, Kyoto</span>
+            </article>
+            <article class="tile rise" style="--d:2">
+              <div class="ic"><svg class="i"><use href="#i-star"/></svg></div>
+              <h3>Hotel reviews</h3>
+              <p>Guest reviews with a score, a title and the stay details.</p>
+              <span class="chip">8.6 / 10</span>
+            </article>
+            <article class="tile rise" style="--d:3">
+              <div class="ic"><svg class="i"><use href="#i-updown"/></svg></div>
+              <h3>Up / down votes</h3>
+              <p>Travellers vote on reviews, so the most useful ones rise.</p>
+              <span class="chip">▲ 24 &nbsp;▼ 2</span>
+            </article>
+          </div>
+        </div>
+        <div>
+          <div class="label">Ask the reviews: contextual retrieval</div>
+          <div class="rag">
+            <div class="q rise" style="--d:2"><svg class="i"><use href="#i-search"/></svg>Is it quiet at night?<span class="caret"></span></div>
+            <svg class="wire" viewBox="0 0 100 30" preserveAspectRatio="none" style="--d:4" aria-hidden="true"><path d="M50 0 C50 15, 25 15, 25 30"/><path d="M50 0 C50 15, 75 15, 75 30"/></svg>
+            <div class="branches">
+              <div class="br rise" style="--d:5">
+                <h4><svg class="i"><use href="#i-type"/></svg>BM25 keywords</h4>
+                <p>exact words: <mark>quiet</mark>, <mark>night</mark></p>
+              </div>
+              <div class="br rise" style="--d:5">
+                <h4><svg class="i"><use href="#i-db"/></svg>Vector DB (pgvector)</h4>
+                <p>same meaning: “no street <mark>noise</mark>”, “slept well”</p>
+              </div>
+            </div>
+            <svg class="wire" viewBox="0 0 100 30" preserveAspectRatio="none" style="--d:7" aria-hidden="true"><path d="M25 0 C25 15, 50 15, 50 30"/><path d="M75 0 C75 15, 50 15, 50 30"/></svg>
+            <div class="rr pop" style="--d:8">
+              <svg class="i"><use href="#i-rank"/></svg>
+              <div><b>Reranker: Reciprocal Rank Fusion</b><br><span>merges both lists and re-ranks, so passages strong on both come first</span></div>
+            </div>
+            <div class="hit rise" style="--d:10">
+              <span class="rank">1</span>
+              <div>
+                <p>“Our room faced the garden, so it was completely <mark>quiet at night</mark>.”</p>
+                <small>example result · BM25 rank 2 · vector rank 1 → fused rank 1</small>
+              </div>
+            </div>
+            <div class="offline rise" style="--d:11"><svg class="i"><use href="#i-key"/></svg>Contexts and embeddings were made offline once; no AI model runs inside the app.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <footer class="foot"><span><b>Booking Holdings</b> · Group Travel Matcher</span><span class="num">5</span></footer>
+  </section>
+
+  <!-- ================= 6. Trust & profiles ================= -->
+  <section class="slide s6" aria-label="Who are you travelling with?">
+    <header class="bar"><h2>Who are you travelling with?</h2><p>Either side could be a scammer, so trust works both ways</p></header>
+    <div class="body">
+      <div class="cols6">
+        <div>
+          <div class="label">The risk</div>
+          <div class="risk">
+            <div class="side rise" style="--d:0">
+              <h4><svg class="i"><use href="#i-users"/></svg>Organiser</h4>
+              <p><svg class="i"><use href="#i-alert"/></svg>could post a fake trip to collect money</p>
+            </div>
+            <div class="mid pop" style="--d:2"><span><svg class="i"><use href="#i-shield"/></svg></span></div>
+            <div class="side rise" style="--d:1">
+              <h4><svg class="i"><use href="#i-user"/></svg>Seeker</h4>
+              <p><svg class="i"><use href="#i-alert"/></svg>could fake a profile to get into a group</p>
+            </div>
+          </div>
+          <div class="profile rise" style="--d:3">
+            <span class="sample">SAMPLE PROFILE</span>
+            <div class="p-head">
+              <span class="avatar">A</span>
+              <div>
+                <div class="p-name">Aarav M. <span class="verified"><svg class="i"><use href="#i-badge"/></svg>Verified</span></div>
+                <div class="p-sub">Bengaluru · 27 · 6 group trips · joined 2025</div>
+              </div>
+              <div class="ring" aria-label="Trust score 92 out of 100">
+                <svg viewBox="0 0 84 84"><circle class="bg" cx="42" cy="42" r="34"/><circle class="fg" cx="42" cy="42" r="34"/></svg>
+                <b>92<small>TRUST</small></b>
+              </div>
+            </div>
+            <div class="kyc"><span>✓ Aadhaar verified</span><span>✓ Passport verified</span><span>✓ Phone verified</span></div>
+            <div class="p-review">
+              <span>“Organised the whole trip, split costs fairly, always on time.” <b style="white-space:nowrap">★ 5</b></span>
+              <span class="votes"><span class="up">▲ 18</span><span>▼ 1</span></span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="label">How we build trust</div>
+          <div class="layers">
+            <div class="layer next rise" style="--d:4">
+              <span class="ic"><svg class="i"><use href="#i-badge"/></svg></span>
+              <div><h4>Verified badge</h4><p>Like a “verified seller” on Amazon: one glance tells you this person is real.</p></div>
+              <span class="state next">NEXT</span>
+            </div>
+            <div class="layer next rise" style="--d:5">
+              <span class="ic"><svg class="i"><use href="#i-id"/></svg></span>
+              <div><h4>KYC: Aadhaar / passport</h4><p>Identity checked once before you post or join a group; fake profiles are filtered out.</p></div>
+              <span class="state next">NEXT</span>
+            </div>
+            <div class="layer next rise" style="--d:6">
+              <span class="ic"><svg class="i"><use href="#i-gauge"/></svg></span>
+              <div><h4>Trust score from past trips</h4><p>Built from completed trips, ratings from companions and verified ID.</p></div>
+              <span class="state next">NEXT</span>
+            </div>
+            <div class="layer rise" style="--d:7">
+              <span class="ic"><svg class="i"><use href="#i-updown"/></svg></span>
+              <div><h4>Profiles, ratings &amp; review votes</h4><p>Every traveller has a profile with ratings and reviews; ▲ / ▼ votes push honest reviews up.</p></div>
+              <span class="state built">BUILT</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <footer class="foot"><span><b>Booking Holdings</b> · Group Travel Matcher</span><span class="num">6</span></footer>
+  </section>
+
+  <!-- ================= 7. Team chat ================= -->
+  <section class="slide s7" aria-label="Team chat">
+    <header class="bar"><h2>Plan it together</h2><p>Team chat opens once the group books its hotel</p></header>
+    <div class="body">
+      <div class="cols7">
+        <div>
+          <div class="label">Sample group chat</div>
+          <div class="chat">
+            <div class="chat-top"><b>Kyoto Explorers</b><span>3 members · booked</span></div>
+            <div class="chat-body">
+              <div class="announce rise" style="--d:0"><svg class="i"><use href="#i-mega"/></svg><div><small>ANNOUNCEMENT · Sarah (organiser)</small>Hotel booked: Gion Corner, check-in 12 Apr.</div></div>
+              <div class="msg rise" style="--d:1"><small>Priya</small>Mt Fuji trip on Tuesday or Thursday?</div>
+              <div class="poll rise" style="--d:2">
+                <h5><svg class="i"><use href="#i-chart"/></svg>Which day for Mt Fuji?</h5>
+                <div class="opt win" style="--w:67%"><i></i><span>Tuesday<em>2 votes</em></span></div>
+                <div class="opt" style="--w:33%"><i></i><span>Thursday<em>1 vote</em></span></div>
+                <small>3 of 3 voted · you can change your vote</small>
+              </div>
+              <div class="msg me rise" style="--d:3"><small>You</small>Tuesday it is, see you at 7 am!</div>
+            </div>
+            <div class="composer rise" style="--d:4"><span class="on">Message</span><span>Announcement</span><span>Poll</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="label">What the group gets</div>
+          <div class="c-feats">
+            <div class="c-feat rise" style="--d:1"><span class="ic"><svg class="i"><use href="#i-chat"/></svg></span><div><h4>Conversation</h4><p>Members talk the plan through in one place.</p></div></div>
+            <div class="c-feat rise" style="--d:2"><span class="ic"><svg class="i"><use href="#i-mega"/></svg></span><div><h4>Announcements</h4><p>The organiser tells everyone the decision that was made.</p></div></div>
+            <div class="c-feat rise" style="--d:3"><span class="ic"><svg class="i"><use href="#i-chart"/></svg></span><div><h4>Polls</h4><p>One vote each to reach consensus; the organiser decides who may post or run polls.</p></div></div>
+          </div>
+          <div class="label" style="margin-top:22px">How messages travel</div>
+          <div class="wires">
+            <div class="lane rise" style="--d:5">
+              <div class="lane-top"><h4><svg class="i"><use href="#i-refresh"/></svg>Today (demo): polling</h4><span class="state built">BUILT</span></div>
+              <div class="track"><span class="box">Browser</span><span class="line poll-l"></span><span class="box">API</span><span class="line poll-l"></span><span class="box">Postgres</span></div>
+              <p>Every 4 s the app asks only for new messages: <code>GET /messages?after=M-1042</code>. No extra server, works anywhere.</p>
+            </div>
+            <div class="lane next rise" style="--d:6">
+              <div class="lane-top"><h4><svg class="i"><use href="#i-zap"/></svg>Production: WebSocket service</h4><span class="state next">NEXT</span></div>
+              <div class="track"><span class="box">Server</span><span class="line push-l"></span><span class="box"><svg class="i" style="vertical-align:-2px"><use href="#i-lock"/></svg> Role check</span><span class="line push-l"></span><span class="box">Members</span></div>
+              <p>Messages are pushed instantly, and role-based access decides who can read, post or run polls in each group.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <footer class="foot"><span><b>Booking Holdings</b> · Group Travel Matcher</span><span class="num">7</span></footer>
+  </section>
+
+  <!-- ================= 8. Group photos ================= -->
+  <section class="slide s8" aria-label="Group photos">
+    <header class="bar"><h2>One gallery for the whole trip</h2><p>Upload once, everyone sees it</p></header>
+    <div class="body">
+      <div class="label">The 4 × 4 problem</div>
+      <div class="vs">
+        <div class="panel rise" style="--d:0">
+          <svg class="net" viewBox="0 0 170 150" aria-hidden="true">
+            <path class="ln" style="--d:1" d="M25 25 L145 25"/><path class="ln" style="--d:1" d="M25 125 L145 125"/>
+            <path class="ln" style="--d:2" d="M25 25 L25 125"/><path class="ln" style="--d:2" d="M145 25 L145 125"/>
+            <path class="ln" style="--d:3" d="M25 25 L145 125"/><path class="ln" style="--d:3" d="M145 25 L25 125"/>
+            <circle class="node" cx="25" cy="25" r="14"/><circle class="node" cx="145" cy="25" r="14"/>
+            <circle class="node" cx="25" cy="125" r="14"/><circle class="node" cx="145" cy="125" r="14"/>
+          </svg>
+          <div>
+            <h4>Today: everyone sends to everyone</h4>
+            <p>4 friends each share their photos with the other 3, over WhatsApp, Drive and AirDrop.</p>
+            <div class="big">12 transfers<small>and photos still go missing</small></div>
+          </div>
+        </div>
+        <div class="arrow pop" style="--d:3"><svg class="i"><use href="#i-arrow-right"/></svg></div>
+        <div class="panel good rise" style="--d:4">
+          <svg class="net" viewBox="0 0 170 150" aria-hidden="true">
+            <path class="ln ok" style="--d:5" d="M25 25 L85 75"/><path class="ln ok" style="--d:5" d="M145 25 L85 75"/>
+            <path class="ln ok" style="--d:6" d="M25 125 L85 75"/><path class="ln ok" style="--d:6" d="M145 125 L85 75"/>
+            <circle class="node" cx="25" cy="25" r="14"/><circle class="node" cx="145" cy="25" r="14"/>
+            <circle class="node" cx="25" cy="125" r="14"/><circle class="node" cx="145" cy="125" r="14"/>
+            <circle class="pkt" cx="25" cy="25" r="5" style="--tx:60px;--ty:50px"/>
+            <circle class="pkt" cx="145" cy="125" r="5" style="--tx:-60px;--ty:-50px"/>
+            <rect class="hub" x="63" y="55" width="44" height="40" rx="9"/>
+            <text x="85" y="80" text-anchor="middle" fill="#fff" font-size="13" font-weight="800" font-family="sans-serif">S3</text>
+          </svg>
+          <div>
+            <h4>With us: one shared bucket</h4>
+            <p>Each member uploads once to the group's bucket; the gallery shows everything to everyone.</p>
+            <div class="big">4 uploads<small>one place, nothing lost</small></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pipe rise" style="--d:6">
+        <div class="pipe-top"><h4>Today: S3 API with MinIO in Docker standing in for AWS S3</h4><span class="state built">BUILT</span></div>
+        <div class="pipe-row">
+          <div class="pstep"><b><svg class="i"><use href="#i-upload"/></svg>Upload</b><span>React form sends up to 10 photos + captions (multipart)</span></div>
+          <span class="to"><svg class="i"><use href="#i-arrow-right"/></svg></span>
+          <div class="pstep"><b><svg class="i"><use href="#i-layers"/></svg>Multer</b><span>receives the files in memory; 5 MB and 10-file limits</span></div>
+          <span class="to"><svg class="i"><use href="#i-arrow-right"/></svg></span>
+          <div class="pstep"><b><svg class="i"><use href="#i-filecheck"/></svg>Validation</b><span>JPEG / PNG / WebP from the file's bytes, size, captions</span></div>
+          <span class="to"><svg class="i"><use href="#i-arrow-right"/></svg></span>
+          <div class="pstep"><b><svg class="i"><use href="#i-code"/></svg>AWS SDK v3</b><span>S3Client PutObject to upload, presigned GetObject to view</span></div>
+          <span class="to"><svg class="i"><use href="#i-arrow-right"/></svg></span>
+          <div class="pstep"><b><svg class="i"><use href="#i-cloud"/></svg>MinIO</b><span>stores the actual image; metadata row in Postgres</span></div>
+        </div>
+        <div class="keys"><span class="k">OBJECT KEY</span>s3://group-photos/groups/<i>{group_id}</i>/<i>{photo_id}</i>.jpg &nbsp;→&nbsp; s3://group-photos/groups/G-1001/P-1001.jpg</div>
+      </div>
+      <div class="pipe next rise" style="--d:7">
+        <div class="pipe-top"><h4>Production on AWS</h4><span class="state next">NEXT</span></div>
+        <div class="pipe-row">
+          <div class="pstep"><b><svg class="i"><use href="#i-waves"/></svg>Streaming</b><span>presigned multipart upload, never held in memory</span></div>
+          <span class="to"><svg class="i"><use href="#i-arrow-right"/></svg></span>
+          <div class="pstep"><b><svg class="i"><use href="#i-zap"/></svg>Ingestion event</b><span>S3 ObjectCreated → queue starts the pipeline</span></div>
+          <span class="to"><svg class="i"><use href="#i-arrow-right"/></svg></span>
+          <div class="pstep"><b><svg class="i"><use href="#i-filecheck"/></svg>File checks</b><span>size, type from the file's bytes, dimensions</span></div>
+          <span class="to"><svg class="i"><use href="#i-arrow-right"/></svg></span>
+          <div class="pstep"><b><svg class="i"><use href="#i-refresh"/></svg>Sweeper</b><span>idempotent by photo ID; retries, removes failed uploads</span></div>
+          <span class="to"><svg class="i"><use href="#i-arrow-right"/></svg></span>
+          <div class="pstep"><b><svg class="i"><use href="#i-scan"/></svg>GuardDuty</b><span>malware scan, tags NO_THREATS_FOUND</span></div>
+          <span class="to"><svg class="i"><use href="#i-arrow-right"/></svg></span>
+          <div class="pstep"><b><svg class="i"><use href="#i-cloud"/></svg>S3 bucket</b><span>clean private bucket + thumbnail, signed links</span></div>
+        </div>
+        <div class="keys"><span class="k">KEYS</span>gtm-photos-incoming/groups/<i>G-1001</i>/<i>P-1001</i>.jpg &nbsp;→ checks · sweeper · GuardDuty →&nbsp; gtm-photos/groups/<i>G-1001</i>/photos/<i>P-1001</i>/original.jpg + thumb.webp</div>
+        </div>
+      </div>
+    </div>
+    <footer class="foot"><span><b>Booking Holdings</b> · Group Travel Matcher</span><span class="num">8</span></footer>
+  </section>
+
+  <!-- ================= 9. Demo 1 ================= -->
+  <section class="slide" aria-label="Demo 1">
+    <header class="bar"><h2>Demo 1</h2><p>Live walkthrough · part 1</p></header>
+    <div class="body">
+      <div class="vid-wrap">
+        <div class="vid pop" style="--d:0">
+          <video src="video1.mp4" controls preload="metadata" playsinline></video>
+          <span class="hint">Plays when the slide opens · Space to pause</span>
+        </div>
+      </div>
+    </div>
+    <footer class="foot"><span><b>Booking Holdings</b> · Group Travel Matcher</span><span class="num">9</span></footer>
+  </section>
+
+  <!-- ================= 10. Demo 2 ================= -->
+  <section class="slide" aria-label="Demo 2">
+    <header class="bar"><h2>Demo 2</h2><p>Live walkthrough · part 2</p></header>
+    <div class="body">
+      <div class="vid-wrap">
+        <div class="vid pop" style="--d:0">
+          <video src="video2.mp4" controls preload="metadata" playsinline></video>
+          <span class="hint">Plays when the slide opens · Space to pause</span>
+        </div>
+      </div>
+    </div>
+    <footer class="foot"><span><b>Booking Holdings</b> · Group Travel Matcher</span><span class="num">10</span></footer>
+  </section>
+
+  <!-- ================= 11. Thank you ================= -->
+  <section class="slide s11" aria-label="Thank you">
+    <div class="hero">
+      <div class="hero-text">
+        <div class="label rise" style="--d:0">Group Travel Matcher</div>
+        <h1 class="rise" style="--d:1">Thank you</h1>
+        <p class="rise" style="--d:2">Questions? We'd love to hear them.</p>
+      </div>
+      <svg class="route" viewBox="0 0 520 380" aria-hidden="true">
+        <circle class="ring" cx="300" cy="190" r="175" opacity=".12"/>
+        <circle class="ring" cx="300" cy="190" r="120" opacity=".16"/>
+        <circle class="ring" cx="300" cy="190" r="65" opacity=".22"/>
+        <path id="route2" class="path" d="M110 70 C 260 60, 430 120, 420 190 S 240 300, 250 330"/>
+        <circle class="stop" cx="110" cy="70" r="10"/>
+        <circle class="stop" cx="420" cy="190" r="10"/>
+        <circle class="stop" cx="250" cy="330" r="10"/>
+        <circle class="plane" r="9">
+          <animateMotion dur="6s" repeatCount="indefinite" rotate="auto"><mpath href="#route2"/></animateMotion>
+        </circle>
+      </svg>
+    </div>
+    <div class="team pop" style="--d:4">
+      <div><small>Team</small><strong>Md Team</strong></div>
+      <div class="go"><svg class="i"><use href="#i-check"/></svg></div>
+    </div>
+    <footer class="foot"><b>Booking Holdings</b><span class="tick"></span></footer>
+  </section>
+
+</main>
+
+<div class="progress" id="progress"></div>
+<nav class="nav" aria-label="Slide controls">
+  <button type="button" id="prev" aria-label="Previous slide"><svg class="i"><use href="#i-arrow-left"/></svg></button>
+  <button type="button" id="next" aria-label="Next slide"><svg class="i"><use href="#i-arrow-right"/></svg></button>
+  <button type="button" id="full" aria-label="Full screen">⤢</button>
+</nav>
+
+<!-- icon sprite (Lucide-style line icons, inline so the deck works offline) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></symbol>
+  <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M8 12h.01M12 12h.01M16 12h.01"/></symbol>
+  <symbol id="i-images" viewBox="0 0 24 24"><path d="M18 22H4a2 2 0 0 1-2-2V6"/><path d="m22 13-1.3-1.3a2.4 2.4 0 0 0-3.4 0L11 18"/><circle cx="12" cy="8" r="2"/><rect width="16" height="16" x="6" y="2" rx="2"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-id" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="5" rx="2"/><circle cx="8" cy="12" r="2"/><path d="M5 16.5a3 3 0 0 1 6 0"/><path d="M14 10h5M14 14h3"/></symbol>
+  <symbol id="i-user-plus" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-hotel" viewBox="0 0 24 24"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/></symbol>
+  <symbol id="i-calc" viewBox="0 0 24 24"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M8 6h8"/><path d="M16 14v4M16 10h.01M12 10h.01M8 10h.01M12 14h.01M8 14h.01M12 18h.01M8 18h.01"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></symbol>
+  <symbol id="i-updown" viewBox="0 0 24 24"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></symbol>
+  <symbol id="i-type" viewBox="0 0 24 24"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></symbol>
+  <symbol id="i-rank" viewBox="0 0 24 24"><path d="M10 6h11M10 12h11M10 18h11"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></symbol>
+  <symbol id="i-badge" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+  <symbol id="i-mega" viewBox="0 0 24 24"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></symbol>
+  <symbol id="i-filecheck" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m9 15 2 2 4-4"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></symbol>
+  <symbol id="i-waves" viewBox="0 0 24 24"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></symbol>
+  <symbol id="i-scan" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></symbol>
+</svg>
+
+<script>
+(() => {
+  const deck = document.getElementById('deck');
+  const slides = [...deck.querySelectorAll('.slide')];
+  const progress = document.getElementById('progress');
+  let index = 0;
+
+  // Scale the 1280x720 canvas to fit the window
+  const fit = () => deck.style.setProperty('--s', Math.min(innerWidth / 1280, innerHeight / 720) * 0.98);
+  addEventListener('resize', fit); fit();
+
+  function show(i) {
+    index = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, k) => s.classList.toggle('is-active', k === index));
+    slides.forEach((s, k) => s.querySelectorAll('video').forEach((v) => {
+      if (k === index) { v.play().catch(() => {}); } else { v.pause(); }
+    }));
+    progress.style.width = `${((index + 1) / slides.length) * 100}%`;
+    history.replaceState(null, '', `#${index + 1}`);
+  }
+  const next = () => show(index + 1);
+  const prev = () => show(index - 1);
+
+  addEventListener('keydown', (e) => {
+    const video = slides[index].querySelector('video');
+    if (video && (e.key === ' ' || e.key.toLowerCase() === 'k')) {
+      e.preventDefault(); video.paused ? video.play().catch(() => {}) : video.pause(); return;
+    }
+    if (e.target instanceof HTMLVideoElement && e.key === ' ') return;
+    if (['ArrowRight', 'PageDown', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); next(); }
+    else if (['ArrowLeft', 'PageUp', 'Backspace'].includes(e.key)) { e.preventDefault(); prev(); }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(slides.length - 1);
+    else if (e.key.toLowerCase() === 'f') toggleFull();
+  });
+  document.getElementById('next').onclick = next;
+  document.getElementById('prev').onclick = prev;
+  const toggleFull = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.());
+  document.getElementById('full').onclick = toggleFull;
+
+  // Swipe on touch screens
+  let x0 = null;
+  addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+  addEventListener('touchend', (e) => {
+    if (x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0;
+    if (Math.abs(dx) > 50) (dx < 0 ? next : prev)();
+    x0 = null;
+  });
+
+  // Show the small controls only while the mouse moves
+  let hideTimer;
+  addEventListener('mousemove', () => {
+    document.body.classList.add('show-nav');
+    clearTimeout(hideTimer); hideTimer = setTimeout(() => document.body.classList.remove('show-nav'), 1800);
+  });
+
+  document.querySelectorAll('video').forEach((v) => {
+    const frame = v.closest('.vid');
+    v.addEventListener('play', () => frame.classList.add('playing'));
+    v.addEventListener('pause', () => frame.classList.remove('playing'));
+  });
+
+  show((parseInt(location.hash.slice(1), 10) || 1) - 1);
+})();
+</script>
+</body>
+</html>
